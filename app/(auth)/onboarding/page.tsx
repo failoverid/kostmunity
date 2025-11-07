@@ -21,9 +21,15 @@ export default function OnboardingPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleLogin = async () => {
+const handleLogin = async () => {
     setLoading(true);
     setError(null);
+
+    // LOGIKA DINONAKTIFKAN SEMENTARA
+    alert("UI Tombol Login Berfungsi! (Firebase dinonaktifkan)");
+    setLoading(false);
+
+    /*
     try {
       await signInWithEmailAndPassword(auth, email, password);
       router.push("/dashboard"); // Redirect ke dasbor setelah login
@@ -33,14 +39,20 @@ export default function OnboardingPage() {
     } finally {
       setLoading(false);
     }
+    */
   };
 
   const handleRegister = async () => {
     setLoading(true);
     setError(null);
+
+    // LOGIKA DINONAKTIFKAN SEMENTARA
+    alert("UI Tombol Register Berfungsi! (Firebase dinonaktifkan)");
+    setLoading(false);
+
+    /*
     try {
       await createUserWithEmailAndPassword(auth, email, password);
-      // Di sini Anda mungkin ingin menyimpan username ke Firestore/Database
       router.push("/success-register"); // Redirect ke halaman sukses register
     } catch (err: any) {
       setError(err.message);
@@ -48,6 +60,7 @@ export default function OnboardingPage() {
     } finally {
       setLoading(false);
     }
+    */
   };
 
   return (
