@@ -1,38 +1,43 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase-client"; // Pastikan path ini benar!
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { Eye, EyeOff } from "lucide-react";
 
 // Import Shadcn/UI Components
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function OnboardingPage() {
-  const [email, setEmail] = useState("");
+  // --- STATE BARU UNTUK MENGGANTI TAMPILAN ---
+  const [view, setView] = useState<'member' | 'admin'>('member');
+
+  // State yang sudah ada
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [username, setUsername] = useState(""); // Untuk Register
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-const handleLogin = async () => {
+  // Fungsi untuk menangani login, kini menerima peran (role)
+  const handleLogin = async (loginRole: 'member' | 'admin') => {
     setLoading(true);
     setError(null);
 
     // LOGIKA DINONAKTIFKAN SEMENTARA
-    alert("UI Tombol Login Berfungsi! (Firebase dinonaktifkan)");
+    alert(`UI Tombol Login ${loginRole} Berfungsi! (Firebase dinonaktifkan)`);
     setLoading(false);
 
     /*
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push("/dashboard"); // Redirect ke dasbor setelah login
+      // Anda bisa membedakan logika login di sini
+      // if (loginRole === 'admin') { ... } else { ... }
+      await signInWithEmailAndPassword(auth, username, password);
+      router.push("/dashboard");
     } catch (err: any) {
       setError(err.message);
       console.error("Login error:", err);
@@ -42,132 +47,117 @@ const handleLogin = async () => {
     */
   };
 
-  const handleRegister = async () => {
-    setLoading(true);
+  // Fungsi untuk mengganti view DAN mereset input
+  const toggleView = () => {
+    const newView = view === 'member' ? 'admin' : 'member';
+    setView(newView);
+
+    // Reset state saat ganti view
+    setUsername("");
+    setPassword("");
     setError(null);
-
-    // LOGIKA DINONAKTIFKAN SEMENTARA
-    alert("UI Tombol Register Berfungsi! (Firebase dinonaktifkan)");
-    setLoading(false);
-
-    /*
-    try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      router.push("/success-register"); // Redirect ke halaman sukses register
-    } catch (err: any) {
-      setError(err.message);
-      console.error("Register error:", err);
-    } finally {
-      setLoading(false);
-    }
-    */
+    setShowPassword(false);
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4 bg-[#FDF9ED]"> {/* Warna background dari mockup */}
-      <Card className="w-full max-w-sm rounded-lg shadow-md bg-white p-6"> {/* Card disesuaikan */}
-        <CardHeader className="flex flex-col items-center space-y-2">
-          <div className="relative h-16 w-16">
-            <Image src="/logo.png" alt="Kostmunity Logo" fill objectFit="contain" />
+    <div className="flex min-h-screen flex-col bg-[#FDF9ED] p-8 text-gray-800">
+      {/* 1. Konten Utama (Form) */}
+      <main className="flex-grow flex flex-col justify-center w-full max-w-sm mx-auto">
+
+        {/* --- Judul dan Subjudul Dibuat Dinamis --- */}
+        <div className="mb-8">
+          <h1 className="text-6xl font-bold mb-2">
+            Masuk
+            {view === 'admin' && (
+              <span className="text-2xl font-normal text-orange-600 ml-2">
+                untuk Admin Kos
+              </span>
+            )}
+          </h1>
+          {view === 'member' && (
+            <p className="text-gray-600">
+              Masukkan username dan password akun kalian yang sudah diberikan oleh pemilik kos
+            </p>
+          )}
+        </div>
+
+        {/* Form Inputs (Tetap sama untuk kedua view) */}
+        <div className="space-y-4">
+          <Input
+            type="text"
+            placeholder="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="w-full rounded-lg border-gray-300 bg-white p-6 text-base focus-visible:ring-offset-0 focus-visible:ring-1 focus-visible:ring-gray-400"
+          />
+          <div className="relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-lg border-gray-300 bg-white p-6 text-base focus-visible:ring-offset-0 focus-visible:ring-1 focus-visible:ring-gray-400"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-400 hover:text-gray-600"
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-800">Masuk</CardTitle>
-          <CardDescription className="text-center text-gray-600">
-            {/* Tagline dari mockup */}
-            Masuklah untuk mengelola & membuat kamar kos kamu terlihat menarik.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 bg-gray-100 rounded-lg p-1"> {/* TabsList disesuaikan */}
-              <TabsTrigger value="login" className="data-[state=active]:bg-orange-400 data-[state=active]:text-white data-[state=inactive]:bg-transparent rounded-md text-sm font-medium transition-all duration-200">
-                Masuk
-              </TabsTrigger>
-              <TabsTrigger value="register" className="data-[state=active]:bg-orange-400 data-[state=active]:text-white data-[state=inactive]:bg-transparent rounded-md text-sm font-medium transition-all duration-200">
+        </div>
+
+        {/* Error Message */}
+        {error && <p className="text-sm text-red-500 mt-4">{error}</p>}
+
+        {/* Tombol Aksi */}
+        <div className="mt-10 space-y-4">
+          <Button
+            onClick={() => handleLogin(view)} // Kirim 'view' sebagai peran
+            disabled={loading || !username || !password}
+            className="w-full rounded-full bg-[#C7C6B8] py-6 text-base font-semibold text-gray-600 hover:bg-[#B0AF9F] disabled:bg-[#C7C6B8]/80 disabled:text-gray-500"
+          >
+            {loading ? "Memproses..." : "Masuk"}
+          </Button>
+
+          {/* Separator "atau" */}
+          <div className="flex items-center py-2">
+            <div className="flex-grow border-t border-gray-300"></div>
+            <span className="mx-4 text-sm text-gray-400">atau</span>
+            <div className="flex-grow border-t border-gray-300"></div>
+          </div>
+
+          {/* --- Tombol Toggle Dibuat Dinamis --- */}
+          <Button
+            variant="outline"
+            className="w-full rounded-full border border-gray-400 bg-transparent py-6 text-base font-semibold text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            onClick={toggleView} // Gunakan fungsi toggleView
+          >
+            {/* Teks tombol berubah berdasarkan state 'view' */}
+            {view === 'member' ? 'Masuk sebagai Admin Kos' : 'Masuk sebagai Member Kos'}
+          </Button>
+
+          {/* --- Link Daftar (Hanya Muncul di View Admin) --- */}
+          {view === 'admin' && (
+            <p className="text-center text-sm text-gray-600 pt-2">
+              Belum Memiliki Akun Admin?{' '}
+              <button
+                onClick={() => router.push('/register-admin')} // Arahkan ke rute register admin
+                className="font-semibold text-red-500 hover:underline"
+              >
                 Daftar
-              </TabsTrigger>
-            </TabsList>
+              </button>
+            </p>
+          )}
+        </div>
+      </main>
 
-            {/* TAB LOGIN */}
-            <TabsContent value="login" className="mt-6 space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email-login" className="text-sm font-medium">Email</Label>
-                <Input
-                  id="email-login"
-                  type="email"
-                  placeholder="email@domain.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="rounded-md border border-gray-300 p-2 w-full focus:outline-none focus:ring-2 focus:ring-orange-400"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password-login" className="text-sm font-medium">Password</Label>
-                <Input
-                  id="password-login"
-                  type="password"
-                  placeholder="Min 6 Karakter"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="rounded-md border border-gray-300 p-2 w-full focus:outline-none focus:ring-2 focus:ring-orange-400"
-                />
-              </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button
-                onClick={handleLogin}
-                disabled={loading}
-                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 rounded-md transition-colors duration-200"
-              >
-                {loading ? "Memproses..." : "Masuk"}
-              </Button>
-            </TabsContent>
-
-            {/* TAB REGISTER */}
-            <TabsContent value="register" className="mt-6 space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="username-register" className="text-sm font-medium">Username</Label>
-                <Input
-                  id="username-register"
-                  type="text"
-                  placeholder="usernamekamu"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="rounded-md border border-gray-300 p-2 w-full focus:outline-none focus:ring-2 focus:ring-orange-400"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email-register" className="text-sm font-medium">Email</Label>
-                <Input
-                  id="email-register"
-                  type="email"
-                  placeholder="email@domain.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="rounded-md border border-gray-300 p-2 w-full focus:outline-none focus:ring-2 focus:ring-orange-400"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password-register" className="text-sm font-medium">Password</Label>
-                <Input
-                  id="password-register"
-                  type="password"
-                  placeholder="Min 6 Karakter"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="rounded-md border border-gray-300 p-2 w-full focus:outline-none focus:ring-2 focus:ring-orange-400"
-                />
-              </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button
-                onClick={handleRegister}
-                disabled={loading}
-                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 rounded-md transition-colors duration-200"
-              >
-                {loading ? "Memproses..." : "Daftar"}
-              </Button>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      {/* 2. Footer (Logo) */}
+      <footer className="flex-shrink-0 flex flex-col items-center justify-center pt-8">
+        <Image src="/kostmunity-logo.png" alt="Kostmunity Logo" width={50} height={50} />
+        <span className="text-xl font-bold text-gray-800 mt-2">kostmunity.</span>
+      </footer>
     </div>
   );
 }
