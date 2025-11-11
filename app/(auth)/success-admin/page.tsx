@@ -11,7 +11,7 @@ export default function SuccessRegisterPage() {
   useEffect(() => {
     // Redirect setelah 3 detik
     const timer = setTimeout(() => {
-      router.push("/dashboard"); // Ganti dengan rute dashboard Anda
+      router.push("/dashboard/admin"); // Ganti dengan rute dashboard Anda
     }, 1000); // 3 detik
 
     return () => clearTimeout(timer);
