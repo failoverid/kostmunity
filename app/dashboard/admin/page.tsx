@@ -17,6 +17,7 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card";
+import Image from "next/image";
 import Link from "next/link";
 
 /**
@@ -40,9 +41,9 @@ const PlaceholderRow = ({ cols = 3 }: { cols: number }) => {
 /**
  * Komponen Helper untuk Card "Lihat Selengkapnya"
  */
-const SeeMoreLink = () => (
+const SeeMoreLink = ({ href }: { href: string }) => (
   <Link
-    href="#"
+    href={href} // Gunakan href dari prop
     className="flex items-center justify-end text-sm text-blue-600 hover:underline pt-4"
   >
     Lihat Selengkapnya <ArrowRight className="w-4 h-4 ml-1" />
@@ -63,20 +64,21 @@ export default function AdminDashboardPage() {
       <main className="p-4 space-y-6 max-w-lg mx-auto pb-24">
 
         {/* 1. Header */}
-        <div className="flex items-center gap-2">
-          <div className="p-2 bg-gray-800 text-white rounded-lg">
-            <Building2 className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold">Kostmunity</h1>
-            <p className="text-sm text-gray-500">Admin Dashboard</p>
+        <div className="sticky top-0 z-50 flex items-center pt-8 gap-2 pb-8 bg-white border-b border-gray-500 justify-center shadow-xl rounded-lg">
+          <Image src="/kostmunity-logo.png" alt="Kostmunity Logo" width={29.97} height={35.19} />
+            <h1 className="text-2xl font-bold text-gray-800">
+            Kostmunity
+          </h1>
+          <div className="flex flex-col items-start"> {/* <--- items-start di sini */}
+            <p className="text-sm text-gray-650 font-semibold m-0 leading-3 mt-1">Admin</p> {/* <--- mt-1 di sini */}
+            <p className="text-sm text-gray-800 font-bold m-0 leading-3">Dashboard</p>
           </div>
         </div>
 
         {/* 2. Nama Kost */}
         <Card className="bg-white rounded-lg shadow-sm">
-          <CardContent className="p-4 flex justify-between items-center">
-            <h2 className="text-lg font-semibold">Kost Kurnia</h2>
+          <CardContent className="p-1 flex justify-between items-center">
+            <h2 className="text-lg font-bold m-3">Kost Kurnia</h2>
             <Button variant="ghost" size="icon">
               <Pencil className="w-5 h-5 text-gray-500" />
             </Button>
@@ -91,7 +93,8 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* 4. Manajemen Member */}
-        <ManagementCard title="Manajemen Member">
+        <ManagementCard title="Manajemen Member"
+        href="/dashboard/admin/members">
           {/* Header Tabel */}
           <div className="grid grid-cols-3 gap-4 text-sm font-medium text-gray-500 mb-3 px-1">
             <span>Nama</span>
@@ -106,11 +109,11 @@ export default function AdminDashboardPage() {
             <PlaceholderRow cols={3} />
             <PlaceholderRow cols={3} />
           </div>
-          <SeeMoreLink />
         </ManagementCard>
 
         {/* 5. Manajemen Tagihan */}
-        <ManagementCard title="Manajemen Tagihan">
+        <ManagementCard title="Manajemen Tagihan"
+        href="/dashboard/admin/billing">
           {/* Header Tabel */}
           <div className="grid grid-cols-4 gap-2 text-xs sm:text-sm font-medium text-gray-500 mb-3 px-1">
             <span>Nama</span>
@@ -133,11 +136,11 @@ export default function AdminDashboardPage() {
             <PlaceholderRow cols={4} />
             <PlaceholderRow cols={4} />
           </div>
-          <SeeMoreLink />
         </ManagementCard>
 
         {/* 6. Manajemen Layanan */}
-        <ManagementCard title="Manajemen Layanan">
+        <ManagementCard title="Manajemen Layanan"
+        href="/dashboard/admin/services">
           {/* Header Tabel */}
           <div className="grid grid-cols-2 gap-4 text-sm font-medium text-gray-500 mb-3 px-1">
             <span>Nama</span>
@@ -151,13 +154,14 @@ export default function AdminDashboardPage() {
             <PlaceholderRow cols={2} />
             <PlaceholderRow cols={2} />
           </div>
-          <SeeMoreLink />
         </ManagementCard>
 
         {/* 7. Grid Statistik Bawah */}
         <div className="grid grid-cols-2 gap-4">
-          <BottomStatBox title="Lost and Found" count={5} />
-          <BottomStatBox title="Aduan atau Feedback" count={3} />
+          <BottomStatBox title="Lost and Found" count={5}
+          href="/dashboard/admin/lost-found" />
+          <BottomStatBox title="Aduan atau Feedback" count={3}
+          href="/dashboard/admin/feedback" />
         </div>
 
         {/* 8. Tombol Sign Out */}
@@ -168,7 +172,7 @@ export default function AdminDashboardPage() {
           </Button>
         </div>
 
-      </main> {/* --- AKHIR DARI KONTEN SCROLLABLE --- */}
+      </main>
 
 
       {/* --- 9. FLOATING ACTION BUTTON (FAB) ---
@@ -200,7 +204,7 @@ const StatBox = ({ title, value }: { title: string, value: string }) => (
 );
 
 // Card Manajemen (Putih)
-const ManagementCard = ({ title, children }: { title: string, children: React.ReactNode }) => (
+const ManagementCard = ({ title, href, children }: { title: string, href: string, children: React.ReactNode }) => (
   <Card className="bg-white rounded-lg shadow-sm overflow-hidden">
     <CardHeader className="flex flex-row items-center justify-between p-4 border-b">
       <CardTitle className="text-lg font-semibold">{title}</CardTitle>
@@ -211,19 +215,20 @@ const ManagementCard = ({ title, children }: { title: string, children: React.Re
     </CardHeader>
     <CardContent className="p-4">
       {children}
+      <SeeMoreLink href={href} /> {/* <-- Kirim href ke SeeMoreLink */}
     </CardContent>
   </Card>
 );
 
 // Box Statistik Bawah (Gelap, dengan link)
-const BottomStatBox = ({ title, count }: { title: string, count: number }) => (
+const BottomStatBox = ({ title, count, href }: { title: string, count: number, href: string }) => (
   <div className="bg-gray-800 text-white p-4 rounded-lg shadow-md relative">
     {/* Badge Angka */}
     <span className="absolute top-2 right-2 bg-red-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full">
       {count}
     </span>
     <h3 className="font-semibold mb-3 pr-6">{title}</h3>
-    <Link href="#" className="flex items-center text-xs text-gray-300 hover:underline">
+    <Link href={href} className="flex items-center text-xs text-gray-300 hover:underline">
       Lihat Selengkapnya <ArrowRight className="w-3 h-3 ml-1" />
     </Link>
   </div>
