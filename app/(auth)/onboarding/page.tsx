@@ -28,11 +28,6 @@ export default function OnboardingPage() {
     setLoading(true);
     setError(null);
 
-    // LOGIKA DINONAKTIFKAN SEMENTARA
-    alert(`UI Tombol Login ${loginRole} Berfungsi! (Firebase dinonaktifkan)`);
-    setLoading(false);
-
-    /*
     try {
       // Anda bisa membedakan logika login di sini
       // if (loginRole === 'admin') { ... } else { ... }
@@ -44,7 +39,6 @@ export default function OnboardingPage() {
     } finally {
       setLoading(false);
     }
-    */
   };
 
   // Fungsi untuk mengganti view DAN mereset input
