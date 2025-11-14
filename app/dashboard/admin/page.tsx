@@ -7,10 +7,11 @@ import {
   Plus,
   ArrowRight,
   LogOut,
-  Building2
+  Check
 } from "lucide-react";
 // Import komponen shadcn/ui
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/card";
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
 
 /**
  * Komponen Helper untuk baris placeholder abu-abu
@@ -53,6 +55,11 @@ const SeeMoreLink = ({ href }: { href: string }) => (
 
 // --- Komponen Halaman Utama Dashboard Admin ---
 export default function AdminDashboardPage() {
+
+    // Buat state untuk melacak mode edit dan nama kost
+    const [isEditing, setIsEditing] = useState(false);
+    const [kostName, setKostName] = useState("Kost Kurnia");
+
   return (
     // Background abu-abu muda untuk seluruh halaman
     <div className="min-h-screen bg-gray-100 text-gray-800">
@@ -75,15 +82,43 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* 2. Nama Kost */}
-        <Card className="bg-white rounded-lg shadow-sm">
-          <CardContent className="p-1 flex justify-between items-center">
-            <h2 className="text-lg font-bold m-3">Kost Kurnia</h2>
-            <Button variant="ghost" size="icon">
-              <Pencil className="w-5 h-5 text-gray-500" />
-            </Button>
-          </CardContent>
-        </Card>
+        {/* 2. Nama Kost (Bisa Diedit) */}
+            <Card className="bg-white rounded-lg shadow-sm">
+            {/* Saya ganti p-1 menjadi p-4 agar lebih rapi */}
+            <CardContent className="p-4 flex justify-between items-center gap-2">
+
+                {/* 4. Tampilkan Input atau Teks (Render Bersyarat) */}
+                {isEditing ? (
+                // --- MODE EDIT: Tampilkan Input ---
+                <Input
+                    type="text"
+                    value={kostName}
+                    onChange={(e) => setKostName(e.target.value)}
+                    className="text-lg font-bold" // Samakan style dengan h2
+                    autoFocus // Langsung fokus ke input saat diklik
+                />
+                ) : (
+                // --- MODE TAMPIL: Tampilkan Teks ---
+                <h2 className="text-lg font-bold">{kostName}</h2>
+                )}
+
+                {/* 5. Buat tombol untuk mengganti mode */}
+                <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsEditing(!isEditing)} // Toggle mode edit
+                >
+                {isEditing ? (
+                    // --- Tampilkan Ikon "Simpan" (Check) ---
+                    <Check className="w-5 h-5 text-green-600" />
+                ) : (
+                    // --- Tampilkan Ikon "Edit" (Pencil) ---
+                    <Pencil className="w-5 h-5 text-gray-500" />
+                )}
+                </Button>
+
+            </CardContent>
+            </Card>
 
         {/* 3. Grid Statistik Atas */}
         <div className="grid grid-cols-3 gap-3">

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   Home,
-  Building2,
   Plus,
   MessageSquare,
   Pencil,

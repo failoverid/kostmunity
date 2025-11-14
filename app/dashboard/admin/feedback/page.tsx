@@ -56,15 +56,15 @@ export default function FeedbackPage() {
       <main className="p-4 space-y-4 max-w-lg mx-auto pb-24">
 
         {/* 1. Header */}
-        <div className="flex items-center justify-center pt-8  gap-2">
-          <Image src="/kostmunity-logo.png" alt="Kostmunity Logo" width={29.97} height={35.19} />
-            <h1 className="text-2xl font-bold text-gray-800">
+        <div className="sticky top-0 z-50 flex items-center pt-8 gap-2 pb-8 bg-gray border-b border-black-500 justify-center shadow-xl rounded-lg">
+            <Image src="/kostmunity-logo.png" alt="Kostmunity Logo" width={29.97} height={35.19} className="filter invert"/>
+            <h1 className="text-2xl font-bold text-white-800">
             Kostmunity
-          </h1>
-          <div className="flex flex-col items-start"> {/* <--- items-start di sini */}
-            <p className="text-sm text-gray-500 m-0 leading-3 mt-1">Admin</p> {/* <--- mt-1 di sini */}
-            <p className="text-sm text-gray-800 font-bold m-0 leading-3">Dashboard</p>
-          </div>
+            </h1>
+            <div className="flex flex-col items-start"> {/* <--- items-start di sini */}
+            <p className="text-sm text-white-650 font-semibold m-0 leading-3 mt-1">Admin</p> {/* <--- mt-1 di sini */}
+            <p className="text-sm text-white-800 font-bold m-0 leading-3">Dashboard</p>
+            </div>
         </div>
 
         {/* 2. Konten Halaman */}

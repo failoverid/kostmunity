@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Home, Building2, ImageIcon } from "lucide-react";
+import { Home, Building2, ImageIcon, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardHeader
 } from "@/components/ui/card";
 import Image from "next/image";
 
@@ -40,30 +41,35 @@ export default function LostFoundPage() {
       <main className="p-4 space-y-4 max-w-lg mx-auto pb-24">
 
         {/* 1. Header */}
-        <div className="flex items-center justify-center pt-8  gap-2">
-          <Image src="/kostmunity-logo.png" alt="Kostmunity Logo" width={29.97} height={35.19} />
-            <h1 className="text-2xl font-bold text-gray-800">
+        <div className="sticky top-0 z-50 flex items-center pt-8 gap-2 pb-8 bg-gray border-b border-black-500 justify-center shadow-xl rounded-lg">
+            <Image src="/kostmunity-logo.png" alt="Kostmunity Logo" width={29.97} height={35.19} className="filter invert"/>
+            <h1 className="text-2xl font-bold text-white-800">
             Kostmunity
-          </h1>
-          <div className="flex flex-col items-start"> {/* <--- items-start di sini */}
-            <p className="text-sm text-gray-500 m-0 leading-3 mt-1">Admin</p> {/* <--- mt-1 di sini */}
-            <p className="text-sm text-gray-800 font-bold m-0 leading-3">Dashboard</p>
-          </div>
+            </h1>
+            <div className="flex flex-col items-start"> {/* <--- items-start di sini */}
+            <p className="text-sm text-white-650 font-semibold m-0 leading-3 mt-1">Admin</p> {/* <--- mt-1 di sini */}
+            <p className="text-sm text-white-800 font-bold m-0 leading-3">Dashboard</p>
+            </div>
         </div>
 
         {/* 2. Konten Halaman */}
-        <div className="space-y-2">
-          <h2 className="text-xl font-bold">Lost and Found</h2>
-          <p className="text-sm text-gray-400">Kost Kurnia</p>
-        </div>
+        <Card className="bg-[##404040] rounded-lg shadow-sm overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between p-4 border-b">
+            <div className="space-y-2">
 
-        {/* 3. Grid Item */}
-        <div className="grid grid-cols-2 gap-4">
-          {items.map((item) => (
-            <LostItemCard key={item.id} item={item} />
-          ))}
-        </div>
-
+            <h2 className="text-xl font-bold text-white">Lost and Found</h2>
+            <p className="text-sm text-gray-400">Kost Kurnia</p>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 bg-[##404040]">
+            {/* 3. Grid Item */}
+            <div className="grid grid-cols-2 gap-4">
+            {items.map((item) => (
+                <LostItemCard key={item.id} item={item} />
+            ))}
+            </div>
+          </CardContent>
+        </Card>
       </main>
 
       {/* Floating Action Button (FAB) */}
