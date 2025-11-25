@@ -1,15 +1,21 @@
-"use client";
-
-import { useState } from "react";
+import { useRouter } from "expo-router";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase-client"; // Pastikan path ini benar!
-import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { Eye, EyeOff } from "lucide-react";
-
-// Import Shadcn/UI Components
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Eye, EyeOff } from "lucide-react-native"; // Gunakan versi native
+import { useState } from "react";
+import {
+    ActivityIndicator,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from "react-native";
+import { auth } from "../../../lib/firebase-client"; // Pastikan path benar
 
 export default function OnboardingPage() {
   // --- STATE BARU UNTUK MENGGANTI TAMPILAN ---
@@ -20,21 +26,19 @@ export default function OnboardingPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
   const router = useRouter();
 
-  // Fungsi untuk menangani login, kini menerima peran (role)
+  // Fungsi untuk menangani login
   const handleLogin = async (loginRole: 'member' | 'admin') => {
     setLoading(true);
-    setError(null);
 
     try {
-      // Anda bisa membedakan logika login di sini
-      // if (loginRole === 'admin') { ... } else { ... }
+      // Logika login tetap sama
       await signInWithEmailAndPassword(auth, username, password);
-      router.push("/dashboard");
+      router.replace("/dashboard/admin"); // Gunakan replace di mobile agar tidak bisa back
     } catch (err: any) {
-      setError(err.message);
+      Alert.alert("Login Gagal", err.message); // Alert native pengganti console.error
       console.error("Login error:", err);
     } finally {
       setLoading(false);
@@ -49,109 +53,275 @@ export default function OnboardingPage() {
     // Reset state saat ganti view
     setUsername("");
     setPassword("");
-    setError(null);
     setShowPassword(false);
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#FDF9ED] p-8 text-gray-800">
-      {/* 1. Konten Utama (Form) */}
-      <main className="flex-grow flex flex-col justify-center w-full max-w-sm mx-auto">
+    // KeyboardAvoidingView: Agar keyboard tidak menutupi input di HP
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.container}
+    >
+      <ScrollView contentContainerStyle={styles.scrollContent}>
 
-        {/* --- Judul dan Subjudul Dibuat Dinamis --- */}
-        <div className="mb-8">
-          <h1 className="text-6xl font-bold mb-2">
-            Masuk
-            {view === 'admin' && (
-              <span className="text-2xl font-normal text-orange-600 ml-2">
-                untuk Admin Kos
-              </span>
+        {/* 1. Konten Utama (Form) */}
+        <View style={styles.mainContent}>
+
+          {/* --- Judul dan Subjudul Dibuat Dinamis --- */}
+          <View style={styles.headerContainer}>
+            <Text style={styles.title}>
+              Masuk
+              {view === 'admin' && (
+                <Text style={styles.titleAdmin}> untuk Admin Kos</Text>
+              )}
+            </Text>
+
+            {view === 'member' && (
+              <Text style={styles.subtitle}>
+                Masukkan username dan password akun kalian yang sudah diberikan oleh pemilik kos
+              </Text>
             )}
-          </h1>
-          {view === 'member' && (
-            <p className="text-gray-600">
-              Masukkan username dan password akun kalian yang sudah diberikan oleh pemilik kos
-            </p>
-          )}
-        </div>
+          </View>
 
-        {/* Form Inputs (Tetap sama untuk kedua view) */}
-        <div className="space-y-4">
-          <Input
-            type="text"
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-full rounded-lg border-gray-300 bg-white p-6 text-base focus-visible:ring-offset-0 focus-visible:ring-1 focus-visible:ring-gray-400"
-          />
-          <div className="relative">
-            <Input
-              type={showPassword ? "text" : "password"}
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border-gray-300 bg-white p-6 text-base focus-visible:ring-offset-0 focus-visible:ring-1 focus-visible:ring-gray-400"
+          {/* Form Inputs */}
+          <View style={styles.formContainer}>
+            {/* Input Username */}
+            <TextInput
+              style={styles.input}
+              placeholder="Username"
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              placeholderTextColor="#9ca3af"
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-400 hover:text-gray-600"
-            >
-              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-            </button>
-          </div>
-        </div>
 
-        {/* Error Message */}
-        {error && <p className="text-sm text-red-500 mt-4">{error}</p>}
-
-        {/* Tombol Aksi */}
-        <div className="mt-10 space-y-4">
-          <Button
-            onClick={() => handleLogin(view)} // Kirim 'view' sebagai peran
-            disabled={loading || !username || !password}
-            className="w-full rounded-full bg-[#C7C6B8] py-6 text-base font-semibold text-gray-600 hover:bg-[#B0AF9F] disabled:bg-[#C7C6B8]/80 disabled:text-gray-500"
-          >
-            {loading ? "Memproses..." : "Masuk"}
-          </Button>
-
-          {/* Separator "atau" */}
-          <div className="flex items-center py-2">
-            <div className="flex-grow border-t border-gray-300"></div>
-            <span className="mx-4 text-sm text-gray-400">atau</span>
-            <div className="flex-grow border-t border-gray-300"></div>
-          </div>
-
-          {/* --- Tombol Toggle Dibuat Dinamis --- */}
-          <Button
-            variant="outline"
-            className="w-full rounded-full border border-gray-400 bg-transparent py-6 text-base font-semibold text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-            onClick={toggleView} // Gunakan fungsi toggleView
-          >
-            {/* Teks tombol berubah berdasarkan state 'view' */}
-            {view === 'member' ? 'Masuk sebagai Admin Kos' : 'Masuk sebagai Member Kos'}
-          </Button>
-
-          {/* --- Link Daftar (Hanya Muncul di View Admin) --- */}
-          {view === 'admin' && (
-            <p className="text-center text-sm text-gray-600 pt-2">
-              Belum Memiliki Akun Admin?{' '}
-              <button
-                onClick={() => router.push('/register-admin')} // Arahkan ke rute register admin
-                className="font-semibold text-red-500 hover:underline"
+            {/* Input Password dengan Icon Mata */}
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                placeholderTextColor="#9ca3af"
+              />
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.eyeIcon}
               >
-                Daftar
-              </button>
-            </p>
-          )}
-        </div>
-      </main>
+                {showPassword ? (
+                  <EyeOff size={20} color="#9ca3af" />
+                ) : (
+                  <Eye size={20} color="#9ca3af" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
 
-      {/* 2. Footer (Logo) */}
-      <footer className="flex-shrink-0 flex flex-col items-center justify-center pt-8">
-        <Image src="/kostmunity-logo.png" alt="Kostmunity Logo" width={50} height={50} />
-        <span className="text-xl font-bold text-gray-800 mt-2">kostmunity.</span>
-      </footer>
-    </div>
+          {/* Tombol Aksi */}
+          <View style={styles.actionContainer}>
+
+            {/* Tombol Login Utama */}
+            <TouchableOpacity
+              onPress={() => handleLogin(view)}
+              disabled={loading || !username || !password}
+              style={[
+                styles.primaryButton,
+                (loading || !username || !password) && styles.buttonDisabled
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Masuk</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Separator "atau" */}
+            <View style={styles.separatorContainer}>
+              <View style={styles.separatorLine} />
+              <Text style={styles.separatorText}>atau</Text>
+              <View style={styles.separatorLine} />
+            </View>
+
+            {/* Tombol Toggle View (Outline) */}
+            <TouchableOpacity
+              onPress={toggleView}
+              style={styles.outlineButton}
+            >
+              <Text style={styles.outlineButtonText}>
+                {view === 'member' ? 'Masuk sebagai Admin Kos' : 'Masuk sebagai Member Kos'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Link Daftar (Hanya Admin) */}
+            {view === 'admin' && (
+              <View style={styles.registerContainer}>
+                <Text style={styles.registerText}>Belum Memiliki Akun Admin? </Text>
+                <TouchableOpacity onPress={() => router.push('/register-admin')}>
+                  <Text style={styles.registerLink}>Daftar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+          </View>
+        </View>
+
+        {/* 2. Footer (Logo) */}
+        <View style={styles.footer}>
+          <Image
+            source={require('../../../assets/kostmunity-logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <Text style={styles.brandText}>kostmunity.</Text>
+        </View>
+
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
+
+// Styles yang diterjemahkan dari Tailwind CSS Anda
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#FDF9ED", // bg-[#FDF9ED]
+  },
+  scrollContent: {
+    flexGrow: 1,
+    padding: 32, // p-8
+    justifyContent: 'space-between'
+  },
+  mainContent: {
+    flex: 1,
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 400, // max-w-sm (approx)
+    alignSelf: 'center',
+  },
+  headerContainer: {
+    marginBottom: 32, // mb-8
+  },
+  title: {
+    fontSize: 36, // text-6xl (di mobile 6xl terlalu besar, 36-40 lebih pas)
+    fontWeight: "bold",
+    marginBottom: 8,
+    color: "#1f2937", // text-gray-800
+  },
+  titleAdmin: {
+    fontSize: 24, // text-2xl
+    fontWeight: "normal",
+    color: "#ea580c", // text-orange-600
+  },
+  subtitle: {
+    color: "#4b5563", // text-gray-600
+    fontSize: 14,
+  },
+  formContainer: {
+    gap: 16, // space-y-4
+  },
+  input: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#d1d5db", // border-gray-300
+    borderRadius: 8, // rounded-lg
+    padding: 16, // p-6 (di mobile p-4 atau p-16px lebih wajar)
+    fontSize: 16,
+    color: "#1f2937",
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 16,
+    fontSize: 16,
+    color: "#1f2937",
+  },
+  eyeIcon: {
+    padding: 16,
+  },
+  actionContainer: {
+    marginTop: 40, // mt-10
+    gap: 16, // space-y-4
+  },
+  primaryButton: {
+    width: "100%",
+    borderRadius: 999, // rounded-full
+    backgroundColor: "#C7C6B8", // bg-[#C7C6B8]
+    paddingVertical: 16, // py-6
+    alignItems: "center",
+  },
+  buttonDisabled: {
+    opacity: 0.8, // disabled:bg...
+  },
+  primaryButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#4b5563", // text-gray-600
+  },
+  separatorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  separatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#d1d5db", // border-gray-300
+  },
+  separatorText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    color: "#9ca3af", // text-gray-400
+  },
+  outlineButton: {
+    width: "100%",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#9ca3af", // border-gray-400
+    backgroundColor: "transparent",
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  outlineButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#6b7280", // text-gray-500
+  },
+  registerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingTop: 8,
+  },
+  registerText: {
+    fontSize: 14,
+    color: "#4b5563",
+  },
+  registerLink: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#ef4444", // text-red-500
+  },
+  footer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 32,
+  },
+  logo: {
+    width: 50,
+    height: 50,
+  },
+  brandText: {
+    fontSize: 20, // text-xl
+    fontWeight: "bold",
+    color: "#1f2937",
+    marginTop: 8,
+  }
+});
