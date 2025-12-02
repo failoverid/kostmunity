@@ -1,16 +1,15 @@
 import {
-  collection,
   addDoc,
-  getDocs,
-  getDoc,
-  updateDoc,
+  collection,
   deleteDoc,
   doc,
-  serverTimestamp,
+  getDocs,
   orderBy,
   query,
+  serverTimestamp,
+  updateDoc
 } from "firebase/firestore";
-import { db } from "./firebase-client";
+import { db } from "./firebase-clients";
 
 const ADS_COLLECTION = "ads";
 
