@@ -2,14 +2,11 @@ import { doc, setDoc } from "firebase/firestore";
 import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { db } from "./firebase-clients";
 
-export type LostFoundType = "lost" | "found";
-
-export interface LostAndFoundItem {
+export interface LostItem {
   item: string;
   memberId: string;
-  type: LostFoundType;
-  found?: boolean;
-  claimed?: boolean;
+  type: "lost";          
+  found: boolean;        
   reportedAt: Date;
   photoURL?: string;
   description?: string;
@@ -17,11 +14,10 @@ export interface LostAndFoundItem {
   itemId?: string;
 }
 
-export async function reportItem(
+export async function reportLostItem(
   itemName: string,
   memberId: string,
-  type: LostFoundType,
-  fileUri?: string,          // pakai URI string dari Expo ImagePicker
+  fileUri?: string,       // URI dari Expo ImagePicker
   description?: string,
   location?: string
 ): Promise<void> {
@@ -31,9 +27,8 @@ export async function reportItem(
   // Upload foto kalau ada
   if (fileUri) {
     const storage = getStorage();
-    const storageRef = ref(storage, `lostAndFound/${itemId}.jpg`);
+    const storageRef = ref(storage, `lostItems/${itemId}.jpg`);
 
-    // Ambil data dari URI → Blob
     const response = await fetch(fileUri);
     const blob = await response.blob();
 
@@ -41,10 +36,11 @@ export async function reportItem(
     photoURL = await getDownloadURL(storageRef);
   }
 
-  const item: LostAndFoundItem = {
+  const item: LostItem = {
     item: itemName,
     memberId,
-    type,
+    type: "lost",
+    found: false, // default status
     reportedAt: new Date(),
     photoURL,
     description,
@@ -52,8 +48,5 @@ export async function reportItem(
     itemId,
   };
 
-  if (type === "lost") item.found = false;
-  if (type === "found") item.claimed = false;
-
-  await setDoc(doc(db, "lostAndFound", itemId), item);
+  await setDoc(doc(db, "lostItems", itemId), item);
 }
