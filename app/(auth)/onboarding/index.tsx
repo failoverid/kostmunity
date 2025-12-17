@@ -2,25 +2,26 @@ import { useRouter } from "expo-router";
 import { Eye, EyeOff } from "lucide-react-native";
 import { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-// Import auth dari folder lib (naik 3 level: page -> onboarding -> (auth) -> app -> root -> lib)
-import { auth, signInWithEmailAndPassword } from "../../../lib/firebase-clients";
+
+// --- IMPORT DARI ROOT LIB ---
+import { auth, db, signInWithEmailAndPassword } from "../../../lib/firebase-clients";
+// Import Firestore
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 
 export default function OnboardingPage() {
   const [view, setView] = useState<"member" | "admin">("member");
-  // Saya sarankan ubah nama state 'username' jadi 'email' biar tidak bingung,
-  // tapi 'username' juga tidak apa-apa asalkan isinya email.
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -28,38 +29,104 @@ export default function OnboardingPage() {
 
   const router = useRouter();
 
+  // --- FUNGSI LOGIN UTAMA ---
   const handleLogin = async (loginRole: "member" | "admin") => {
+    console.log("--- MULAI PROSES LOGIN ---");
+    console.log("Role:", loginRole);
+    console.log("Email:", email);
+
     setLoading(true);
 
     try {
-      // Validasi sederhana
+      // 1. Validasi Input
       if (!email.includes("@")) {
-        Alert.alert("Format Salah", "Username harus berupa email");
+        Alert.alert("Format Salah", "Email tidak valid.");
         setLoading(false);
         return;
       }
 
-      await signInWithEmailAndPassword(auth, email, password);
+      // 2. Login Auth (Cek Password)
+      console.log("Mencoba sign in auth...");
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      console.log("Auth Berhasil. UID:", user.uid);
 
-      // Redirect ke dashboard sesuai role
-      // Menggunakan replace agar user tidak bisa back ke halaman login
+      // 3. Cek Data di Database Firestore
+      const userDocRef = doc(db, "users", user.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      // --- LOGIKA JIKA DATA TIDAK DITEMUKAN (AUTO FIX UNTUK ADMIN) ---
+      if (!userDocSnap.exists()) {
+        console.log("Data user tidak ditemukan di Firestore.");
+
+        if (loginRole === "admin") {
+          // KHUSUS ADMIN PERTAMA KALI: Kita buatkan datanya otomatis
+          console.log("Membuat data Admin baru otomatis...");
+          try {
+            await setDoc(userDocRef, {
+              email: user.email,
+              role: "admin", // Set role admin
+              createdAt: serverTimestamp(),
+              ownerId: user.uid // Admin adalah owner
+            });
+            console.log("Data Admin berhasil dibuat. Redirecting...");
+            router.replace("/dashboard/admin");
+            return; // Selesai
+          } catch (createErr) {
+            console.error("Gagal buat data admin:", createErr);
+            Alert.alert("Error Database", "Gagal membuat profil admin.");
+          }
+        } else {
+          // JIKA MEMBER: Tidak boleh auto-create, harus hubungi admin
+          Alert.alert("Akun Tidak Dikenal", "Data member tidak ditemukan. Silakan hubungi Admin Kost.");
+        }
+        setLoading(false);
+        return;
+      }
+
+      // --- LOGIKA JIKA DATA DITEMUKAN ---
+      const userData = userDocSnap.data();
+      console.log("Data User Ditemukan:", userData);
+
       if (loginRole === "admin") {
-        router.replace("/dashboard/admin");
+        // --- CEK LOGIN ADMIN ---
+        if (userData.role === "admin") {
+          console.log("Role Admin Valid. Masuk...");
+          router.replace("/dashboard/admin");
+        } else {
+          Alert.alert("Akses Ditolak", "Email ini terdaftar sebagai Member, bukan Admin.");
+          await auth.signOut();
+        }
       } else {
-        router.replace("/dashboard/member"); // Pastikan rute ini ada
+        // --- CEK LOGIN MEMBER ---
+        if (userData.role === "user") {
+          // Cek apakah sudah punya idKost (artinya sudah dimasukkan ke kost oleh admin)
+          if (userData.idKost && userData.idKost !== "-") {
+            console.log("Role Member Valid. Masuk...");
+            router.replace("/dashboard/member");
+          } else {
+            Alert.alert("Akun Belum Aktif", "Akun Anda belum dimasukkan ke dalam Kost oleh Admin.");
+            await auth.signOut();
+          }
+        } else {
+          Alert.alert("Salah Kamar", "Email ini terdaftar sebagai Admin. Silakan login di tab Admin.");
+          await auth.signOut();
+        }
       }
 
     } catch (err: any) {
-      // Menangani error umum Firebase
+      console.error("LOGIN ERROR:", err);
+
       let errorMessage = err.message;
-      if (err.code === 'auth/invalid-credential') {
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
         errorMessage = "Email atau password salah.";
-      } else if (err.code === 'auth/user-not-found') {
-        errorMessage = "Akun tidak ditemukan.";
+      } else if (err.code === 'auth/too-many-requests') {
+        errorMessage = "Terlalu banyak percobaan. Coba lagi nanti.";
+      } else if (err.code === 'auth/network-request-failed') {
+        errorMessage = "Koneksi internet bermasalah.";
       }
 
       Alert.alert("Login Gagal", errorMessage);
-      console.error("Login error:", err);
     } finally {
       setLoading(false);
     }
@@ -68,132 +135,129 @@ export default function OnboardingPage() {
   const toggleView = () => {
     const next = view === "member" ? "admin" : "member";
     setView(next);
-    setEmail(""); // Reset input
+    setEmail("");
     setPassword("");
     setShowPassword(false);
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.mainContent}>
+      <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.container}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.mainContent}>
 
-          {/* HEADER */}
-          <View style={styles.headerContainer}>
-            <Text style={styles.title}>
-              Masuk
-              {view === "admin" && (
-                <Text style={styles.titleAdmin}> untuk Admin Kos</Text>
-              )}
-            </Text>
-
-            {view === "member" && (
-              <Text style={styles.subtitle}>
-                Masukkan email & password akun yang sudah diberikan pemilik kos
-              </Text>
-            )}
-          </View>
-
-          {/* FORM */}
-          <View style={styles.formContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholderTextColor="#9ca3af"
-            />
-
-            <View style={styles.passwordContainer}>
-              <TextInput
-                style={styles.passwordInput}
-                placeholder="Password"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                placeholderTextColor="#9ca3af"
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeIcon}
-              >
-                {showPassword ? (
-                  <EyeOff size={20} color="#9ca3af" />
-                ) : (
-                  <Eye size={20} color="#9ca3af" />
+            {/* HEADER */}
+            <View style={styles.headerContainer}>
+              <Text style={styles.title}>
+                Masuk
+                {view === "admin" && (
+                    <Text style={styles.titleAdmin}> untuk Admin Kos</Text>
                 )}
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* ACTION BUTTONS */}
-          <View style={styles.actionContainer}>
-            <TouchableOpacity
-              onPress={() => handleLogin(view)}
-              disabled={loading || !email || !password}
-              style={[
-                styles.primaryButton,
-                (loading || !email || !password) && styles.buttonDisabled,
-              ]}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Masuk</Text>
-              )}
-            </TouchableOpacity>
-
-            {/* SEPARATOR */}
-            <View style={styles.separatorContainer}>
-              <View style={styles.separatorLine} />
-              <Text style={styles.separatorText}>atau</Text>
-              <View style={styles.separatorLine} />
-            </View>
-
-            {/* SWITCH ROLE */}
-            <TouchableOpacity onPress={toggleView} style={styles.outlineButton}>
-              <Text style={styles.outlineButtonText}>
-                {view === "member"
-                  ? "Masuk sebagai Admin Kos"
-                  : "Masuk sebagai Member Kos"}
               </Text>
-            </TouchableOpacity>
 
-            {/* REGISTER ADMIN LINK */}
-            {view === "admin" && (
-              <View style={styles.registerContainer}>
-                <Text style={styles.registerText}>
-                  Belum Memiliki Akun Admin?{" "}
-                </Text>
-                {/* Pastikan rute /register-admin sudah dibuat atau ganti rute */}
-                <TouchableOpacity onPress={() => router.push("/success-register")}>
-                  <Text style={styles.registerLink}>Daftar</Text>
+              {view === "member" && (
+                  <Text style={styles.subtitle}>
+                    Masukkan email & password akun yang sudah diberikan pemilik kos
+                  </Text>
+              )}
+            </View>
+
+            {/* FORM */}
+            <View style={styles.formContainer}>
+              <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  placeholderTextColor="#9ca3af"
+              />
+
+              <View style={styles.passwordContainer}>
+                <TextInput
+                    style={styles.passwordInput}
+                    placeholder="Password"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    placeholderTextColor="#9ca3af"
+                />
+                <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeIcon}
+                >
+                  {showPassword ? (
+                      <EyeOff size={20} color="#9ca3af" />
+                  ) : (
+                      <Eye size={20} color="#9ca3af" />
+                  )}
                 </TouchableOpacity>
               </View>
-            )}
-          </View>
-        </View>
+            </View>
 
-        {/* FOOTER */}
-        <View style={styles.footer}>
-          <Image
-            source={require("../../../assets/kostmunity-logo.png")}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-          <Text style={styles.brandText}>kostmunity.</Text>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+            {/* ACTION BUTTONS */}
+            <View style={styles.actionContainer}>
+              <TouchableOpacity
+                  onPress={() => handleLogin(view)}
+                  disabled={loading || !email || !password}
+                  style={[
+                    styles.primaryButton,
+                    (loading || !email || !password) && styles.buttonDisabled,
+                  ]}
+              >
+                {loading ? (
+                    <ActivityIndicator color="#fff" />
+                ) : (
+                    <Text style={styles.primaryButtonText}>Masuk</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.separatorContainer}>
+                <View style={styles.separatorLine} />
+                <Text style={styles.separatorText}>atau</Text>
+                <View style={styles.separatorLine} />
+              </View>
+
+              <TouchableOpacity onPress={toggleView} style={styles.outlineButton}>
+                <Text style={styles.outlineButtonText}>
+                  {view === "member"
+                      ? "Masuk sebagai Admin Kos"
+                      : "Masuk sebagai Member Kos"}
+                </Text>
+              </TouchableOpacity>
+
+              {view === "admin" && (
+                  <View style={styles.registerContainer}>
+                    <Text style={styles.registerText}>
+                      Belum Memiliki Akun Admin?{" "}
+                    </Text>
+                    {/* Pastikan rute ini benar, jika belum ada page register, ganti ke # */}
+                    <TouchableOpacity onPress={() => router.push("/register-admin")}>
+                      <Text style={styles.registerLink}>Daftar</Text>
+                    </TouchableOpacity>
+                  </View>
+              )}
+            </View>
+          </View>
+
+          {/* FOOTER */}
+          <View style={styles.footer}>
+            <Image
+                source={require("../../../assets/kostmunity-logo.png")}
+                style={styles.logo}
+                resizeMode="contain"
+            />
+            <Text style={styles.brandText}>kostmunity.</Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
   );
 }
 
-// Styles sama persis seperti sebelumnya
+// --- STYLES ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FDF9ED" },
   scrollContent: { flexGrow: 1, padding: 32, justifyContent: "space-between" },

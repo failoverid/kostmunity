@@ -15,14 +15,19 @@ import {
 import {
     ArrowLeft,
     ArrowRight,
-    ShoppingBag,
-    FileSearch, // Ikon Search/File untuk Empty State
+    FileSearch,
     Plus,
     X,
     Camera,
-    Image as ImageIcon
+    Image as ImageIcon,
+    Home,
+    Wallet,
+    AlertTriangle,
+    Package,
+    User
 } from "lucide-react-native";
 import { useRouter } from "expo-router";
+import FloatingNavbar from "@/components/FloatingNavbar";
 
 // --- WARNA TEMA ---
 const COLORS = {
@@ -30,13 +35,16 @@ const COLORS = {
     cardPurple: "#6C5CE7",
     lime: "#C6F432",
     textWhite: "#FFFFFF",
+    textGray: "#9E9E9E",
     inputBg: "#262A34",
-    inputPurple: "#5A4FCF", // Warna input di dalam modal ungu
+    inputPurple: "#5A4FCF",
+    navbar: "#262A34",
 };
 
 export default function MyReportsPage() {
     const router = useRouter();
     const [modalVisible, setModalVisible] = useState(false);
+    const [activeTab, setActiveTab] = useState("Semua"); // State Tab
 
     // State Form
     const [namaBarang, setNamaBarang] = useState("");
@@ -48,14 +56,15 @@ export default function MyReportsPage() {
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
 
-            {/* --- CONTENT UTAMA (EMPTY STATE) --- */}
-
-            {/* Header (Tanpa Tombol Back Standar) */}
+            {/* 1. Header */}
             <View style={styles.header}>
                 <View style={styles.headerTitleContainer}>
-                    <View style={styles.logoBox}>
-                        <ShoppingBag size={18} color={COLORS.cardPurple} />
-                    </View>
+                    <Image
+                        source={require("../../../../../assets/kostmunity-logo.png")}
+                        style={styles.logoSmall}
+                        resizeMode="contain"
+                        tintColor={COLORS.textWhite}
+                    />
                     <Text style={styles.headerTitle}>Kostmunity</Text>
                     <View style={{ marginLeft: 4 }}>
                         <Text style={styles.headerSubtitle}>LOST &</Text>
@@ -64,12 +73,13 @@ export default function MyReportsPage() {
                 </View>
             </View>
 
-            <View style={styles.contentContainer}>
-                {/* Tombol Back Custom (#LaporanSemuaOrang) */}
+            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
+                {/* 2. Tombol Back Custom (#LaporanSemuaOrang) */}
                 <TouchableOpacity
                     style={styles.searchBar}
                     activeOpacity={0.8}
-                    onPress={() => router.back()} // Navigasi Kembali
+                    onPress={() => router.back()}
                 >
                     <Text style={styles.searchText}>#LaporanSemuaOrang</Text>
                     <View style={styles.arrowCircle}>
@@ -77,17 +87,27 @@ export default function MyReportsPage() {
                     </View>
                 </TouchableOpacity>
 
-                {/* Tabs Dummy */}
+                {/* 3. Tabs Style (Seragam Lost & Found Index) */}
                 <View style={styles.tabContainer}>
-                    <View style={styles.tabButton}>
-                        <Text style={[styles.tabText, {color: COLORS.textWhite, fontWeight: 'bold'}]}>Semua</Text>
-                        <View style={styles.activeLine} />
-                    </View>
-                    <Text style={[styles.tabText, {color: '#666'}]}>Ditemukan</Text>
-                    <Text style={[styles.tabText, {color: '#666'}]}>Kehilangan</Text>
+                    {["Semua", "Ditemukan", "Kehilangan"].map((tab) => (
+                        <TouchableOpacity
+                            key={tab}
+                            onPress={() => setActiveTab(tab)}
+                            style={styles.tabButton}
+                        >
+                            <Text style={[
+                                styles.tabText,
+                                activeTab === tab ? styles.tabTextActive : styles.tabTextInactive
+                            ]}>
+                                {tab}
+                            </Text>
+                            {/* Garis Hijau di bawah teks aktif */}
+                            {activeTab === tab && <View style={styles.activeLine} />}
+                        </TouchableOpacity>
+                    ))}
                 </View>
 
-                {/* Empty State Icon & Text */}
+                {/* 4. Empty State (Diperbaiki posisinya) */}
                 <View style={styles.emptyStateContainer}>
                     <FileSearch size={100} color="#FFF" style={{ marginBottom: 24 }} strokeWidth={1.5} />
 
@@ -104,7 +124,10 @@ export default function MyReportsPage() {
                         </View>
                     </TouchableOpacity>
                 </View>
-            </View>
+
+                {/* Space Bawah untuk Navbar */}
+                <View style={{ height: 100 }} />
+            </ScrollView>
 
 
             {/* --- MODAL FORM --- */}
@@ -117,15 +140,18 @@ export default function MyReportsPage() {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
 
-                        {/* Modal Header */}
                         <View style={styles.modalHeader}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 <View style={styles.logoBoxWhite}>
-                                    <ShoppingBag size={24} color={COLORS.cardPurple} />
+                                    <Image
+                                        source={require("../../../../../assets/kostmunity-logo.png")}
+                                        style={styles.logoModal}
+                                        resizeMode="contain"
+                                        tintColor={COLORS.cardPurple}
+                                    />
                                 </View>
                                 <View>
-                                    <Text style={styles.modalBrand}>kostmunity</Text>
-                                    <Text style={styles.modalSubBrand}>lost and found</Text>
+                                    <Text style={styles.modalBrand}>Lost n Found Report</Text>
                                 </View>
                             </View>
                             <TouchableOpacity onPress={() => setModalVisible(false)}>
@@ -136,8 +162,7 @@ export default function MyReportsPage() {
                         </View>
 
                         <ScrollView contentContainerStyle={styles.formScroll} showsVerticalScrollIndicator={false}>
-
-                            {/* Input Nama */}
+                            {/* Form Inputs ... */}
                             <View style={styles.inputGroup}>
                                 <Text style={styles.label}>Nama Barang</Text>
                                 <TextInput
@@ -149,7 +174,6 @@ export default function MyReportsPage() {
                                 />
                             </View>
 
-                            {/* Status Toggle */}
                             <View style={styles.inputGroup}>
                                 <Text style={styles.label}>Status Barang</Text>
                                 <View style={styles.statusToggleContainer}>
@@ -168,7 +192,6 @@ export default function MyReportsPage() {
                                 </View>
                             </View>
 
-                            {/* Lokasi */}
                             <View style={styles.inputGroup}>
                                 <Text style={styles.label}>Lokasi Terakhir</Text>
                                 <TextInput
@@ -180,7 +203,6 @@ export default function MyReportsPage() {
                                 />
                             </View>
 
-                            {/* Kontak */}
                             <View style={styles.inputGroup}>
                                 <Text style={styles.label}>Info Kontak</Text>
                                 <TextInput
@@ -193,7 +215,6 @@ export default function MyReportsPage() {
                                 />
                             </View>
 
-                            {/* Upload Foto */}
                             <View style={styles.uploadContainer}>
                                 <View style={styles.uploadBox}>
                                     <ImageIcon size={40} color="rgba(0,0,0,0.3)" />
@@ -205,13 +226,9 @@ export default function MyReportsPage() {
                                 </View>
                             </View>
 
-                            {/* Submit Button */}
                             <TouchableOpacity
                                 style={styles.submitButton}
-                                onPress={() => {
-                                    setModalVisible(false);
-                                    // Logika submit
-                                }}
+                                onPress={() => setModalVisible(false)}
                             >
                                 <Text style={styles.submitButtonText}>Kirim Laporan</Text>
                                 <ArrowRight size={18} color="#000" />
@@ -223,6 +240,9 @@ export default function MyReportsPage() {
                 </View>
             </Modal>
 
+            {/* 5. FLOATING NAVBAR */}
+            <FloatingNavbar />
+
         </SafeAreaView>
     );
 }
@@ -232,15 +252,11 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: COLORS.background,
     },
-    contentContainer: {
-        padding: 20,
-        flex: 1,
-    },
-    // Header Style
+    // Header Uniform
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center', // Center title
+        justifyContent: 'center',
         paddingTop: Platform.OS === 'android' ? 40 : 20,
         paddingHorizontal: 20,
         marginBottom: 10,
@@ -250,13 +266,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 8,
     },
-    logoBox: {
-        width: 28,
-        height: 28,
-        backgroundColor: 'rgba(108, 92, 231, 0.2)',
-        borderRadius: 6,
-        alignItems: 'center',
-        justifyContent: 'center',
+    logoSmall: {
+        width: 24,
+        height: 24,
     },
     headerTitle: {
         fontSize: 20,
@@ -270,7 +282,11 @@ const styles = StyleSheet.create({
         lineHeight: 8,
     },
 
-    // Search Bar (Back Button)
+    scrollContent: {
+        padding: 20,
+        paddingTop: 10,
+    },
+
     searchBar: {
         backgroundColor: COLORS.inputBg,
         borderRadius: 12,
@@ -280,10 +296,9 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: 16,
         marginBottom: 20,
-        // opacity: 0.8,
     },
     searchText: {
-        color: '#AAA', // Abu-abu agar terlihat seperti placeholder/disabled
+        color: '#AAA', // DIUBAH DARI #666 KE #AAA
         fontWeight: '600',
         fontSize: 14,
     },
@@ -297,34 +312,58 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
 
-    // Tabs
+    // --- TAB STYLE DIPERBAIKI (Sama persis dengan Lost & Found Index) ---
     tabContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 60,
-        paddingHorizontal: 10,
+        flexDirection: 'row', // TAMBAHAN
+        justifyContent: 'center', // TAMBAHAN
+        marginBottom: 24, // DIUBAH DARI 20 KE 24
+        borderBottomWidth: 1, // TAMBAHAN
+        borderBottomColor: '#262A34', // TAMBAHAN
+    },
+    tabWrapper: { // DIHAPUS/TIDAK DIPAKAI
+        // flexDirection: 'row',
+        // backgroundColor: '#262A34',
+        // borderRadius: 20,
+        // padding: 4,
+        // justifyContent: 'space-between',
     },
     tabButton: {
+        flex: 1,
+        paddingVertical: 12,
+        paddingHorizontal: 16, // TAMBAHAN
         alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
     },
     tabText: {
-        fontSize: 14,
-        fontWeight: '500',
+        fontSize: 14, // DIUBAH DARI 12 KE 14
+        fontWeight: '500', // DIUBAH DARI 600 KE 500
+        textAlign: 'center', // TAMBAHAN
     },
+    tabTextActive: {
+        color: COLORS.textWhite,
+        fontWeight: 'bold', // TAMBAHAN
+    },
+    tabTextInactive: {
+        color: '#666',
+    },
+    // Garis Bawah Hijau (Gaya Lost & Found Index)
     activeLine: {
+        position: 'relative', // DIUBAH DARI 'absolute' KE 'relative'
         height: 3,
         backgroundColor: COLORS.lime,
-        width: '100%',
-        marginTop: 4,
+        width: '80%', // DIUBAH DARI 40% KE 80%
+        marginTop: 8, // DIUBAH DARI bottom: 6 KE marginTop: 8
         borderRadius: 2,
     },
 
-    // Empty State
+    // Empty State (Diperbaiki agar tidak nabrak)
     emptyStateContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: -40, // Naik sedikit
+        marginTop: 60, // Ubah dari -60 ke 60 agar ada jarak cukup
+        marginBottom: 40,
     },
     emptyTitle: {
         fontSize: 24,
@@ -359,7 +398,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
 
-    // --- MODAL STYLE ---
+    // Modal Styles
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)',
@@ -385,6 +424,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 8,
+    },
+    logoModal: {
+        width: 24,
+        height: 24,
     },
     modalBrand: {
         fontSize: 20,

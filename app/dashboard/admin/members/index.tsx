@@ -1,345 +1,324 @@
 import { useRouter } from "expo-router";
+import { ArrowRight, Home, Pencil, Plus, Trash2, X } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
 import {
-    Home,
-    MessageSquare,
-    Pencil,
-    Plus,
-    Trash2
-} from "lucide-react-native";
-import React from "react";
-import {
-    Image,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 
-// --- DATA DUMMY ---
-const members = [
-  { id: 1, nama: "Budi Santoso", kamar: "A-01", status: "Aktif" },
-  { id: 2, nama: "Citra Lestari", kamar: "A-02", status: "Aktif" },
-  { id: 3, nama: "Doni Hidayat", kamar: "B-05", status: "Aktif" },
-  { id: 4, nama: "Eka Wijaya", kamar: "C-10", status: "Aktif" },
-  { id: 5, nama: "Fajar Nugroho", kamar: "C-11", status: "Aktif" },
-];
+// --- FIREBASE IMPORTS ---
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { db } from "../../../../lib/firebase-clients";
+import { createMember, deleteMember, updateMember, UserType } from "../../../../lib/user-services"; // Import fungsi yang kita buat tadi
 
-// --- KOMPONEN HELPER ---
+// --- SIMULASI AUTH ---
+// Ganti string ini dengan ID Kost milik Admin yang sedang Login
+const CURRENT_ADMIN_KOST_ID = "kost_kurnia_01";
 
-// 1. Baris Member (Row)
-const MemberRow = ({ member }: { member: (typeof members)[0] }) => (
-  <View style={styles.rowContainer}>
+// ==========================================
+// COMPONENT: ADD/EDIT MEMBER MODAL
+// ==========================================
+interface MemberModalProps {
+  visible: boolean;
+  onClose: () => void;
+  editData: UserType | null;
+}
 
-    {/* Kolom Nama */}
-    <Text style={[styles.rowText, { flex: 2 }]} numberOfLines={1}>
-      {member.nama}
-    </Text>
+const MemberModal = ({ visible, onClose, editData }: MemberModalProps) => {
+  const [loading, setLoading] = useState(false);
 
-    {/* Kolom Kamar */}
-    <Text style={[styles.rowText, styles.textCenter, { flex: 1 }]}>
-      {member.kamar}
-    </Text>
+  // Form State
+  const [nama, setNama] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [kamar, setKamar] = useState("");
 
-    {/* Kolom Pesan (Icon) */}
-    <View style={[styles.centerContent, { flex: 1 }]}>
-      <TouchableOpacity style={styles.iconButtonOutline}>
-        <MessageSquare size={14} color="#1f2937" />
-      </TouchableOpacity>
-    </View>
+  useEffect(() => {
+    if (editData) {
+      setNama(editData.nama);
+      setEmail(editData.email);
+      setPhone(editData.phone);
+      setKamar(editData.kamar);
+    } else {
+      setNama(""); setEmail(""); setPhone(""); setKamar("");
+    }
+  }, [editData, visible]);
 
-    {/* Kolom Status (Badge) */}
-    <View style={[styles.centerContent, { flex: 1.5 }]}>
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>{member.status}</Text>
-      </View>
-    </View>
+  const handleSubmit = async () => {
+    if (!nama || !email || !phone || !kamar) {
+      Alert.alert("Mohon Lengkapi", "Nama, Email, HP, dan Kamar wajib diisi.");
+      return;
+    }
 
-    {/* Kolom Aksi (Edit/Delete) */}
-    <View style={[styles.actionContainer, { flex: 1.5 }]}>
-      <TouchableOpacity style={styles.actionButton}>
-        <Pencil size={16} color="#2563eb" />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.actionButton}>
-        <Trash2 size={16} color="#dc2626" />
-      </TouchableOpacity>
-    </View>
-
-  </View>
-);
-
-// --- KOMPONEN UTAMA ---
-export default function MembersPage() {
-  const router = useRouter();
+    setLoading(true);
+    try {
+      if (editData && editData.id) {
+        // MODE EDIT
+        await updateMember(editData.id, { nama, email, phone, kamar });
+        Alert.alert("Berhasil", "Data member diperbarui.");
+      } else {
+        // MODE TAMBAH
+        await createMember(CURRENT_ADMIN_KOST_ID, {
+          nama,
+          email,
+          phone,
+          kamar
+        });
+        Alert.alert("Berhasil", "Member baru ditambahkan dengan password default: 123456");
+      }
+      onClose();
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Gagal", "Terjadi kesalahan sistem.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f3f4f6" />
-
-      {/* 1. HEADER (Sticky) */}
-      <View style={styles.header}>
-        <Image
-          // Pastikan path ini benar (naik 4 folder)
-          source={require("../../../../assets/kostmunity-logo.png")}
-          style={styles.headerLogo}
-          resizeMode="contain"
-        />
-        <Text style={styles.headerTitle}>Kostmunity</Text>
-        <View>
-          <Text style={styles.headerSubtitleTop}>Admin</Text>
-          <Text style={styles.headerSubtitleBottom}>Dashboard</Text>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-
-        {/* 2. Card Manajemen Member */}
-        <View style={styles.card}>
-          {/* Card Header */}
-          <View style={styles.cardHeader}>
-            <View>
-              <Text style={styles.cardTitle}>Manajemen Member</Text>
-              <Text style={styles.cardSubtitle}>Oktober 2025</Text>
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <View style={modalStyles.overlay}>
+          <View style={modalStyles.container}>
+            <View style={modalStyles.headerRow}>
+              <View>
+                <Text style={modalStyles.title}>{editData ? "Edit Member" : "Tambah Member"}</Text>
+                <Text style={modalStyles.subtitle}>Akun Login & Data Penghuni</Text>
+              </View>
+              <TouchableOpacity onPress={onClose}><X color="#1f2937" size={24} /></TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.addButton}>
-              <Plus size={14} color="#fff" style={{ marginRight: 4 }} />
-              <Text style={styles.addButtonText}>Tambah</Text>
+
+            <View style={modalStyles.formGroup}>
+              <TextInput style={modalStyles.input} placeholder="Nama Lengkap" value={nama} onChangeText={setNama} />
+              <TextInput
+                  style={[modalStyles.input, editData && {backgroundColor: '#f3f4f6'}]}
+                  placeholder="Email (Untuk Login)"
+                  value={email}
+                  onChangeText={setEmail}
+                  editable={!editData} // Email sebaiknya tidak diubah sembarangan
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+              />
+              <TextInput style={modalStyles.input} placeholder="Nomor Kamar (ex: A-01)" value={kamar} onChangeText={setKamar} />
+              <TextInput style={modalStyles.input} placeholder="No. HP / Kontak" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+            </View>
+
+            <TouchableOpacity style={modalStyles.submitBtn} onPress={handleSubmit} disabled={loading}>
+              {loading ? <ActivityIndicator color="#fff"/> : (
+                  <>
+                    <Text style={modalStyles.submitText}>{editData ? "Simpan Perubahan" : "Buat Akun Member"}</Text>
+                    <ArrowRight size={16} color="#fff"/>
+                  </>
+              )}
             </TouchableOpacity>
           </View>
+        </View>
+      </Modal>
+  );
+};
 
-          {/* Card Content (Table) */}
-          <View style={styles.cardContent}>
+// ==========================================
+// COMPONENT: MEMBER ROW
+// ==========================================
+const MemberRow = ({ member, onEdit, onDelete }: { member: UserType, onEdit: (m: UserType) => void, onDelete: (id: string) => void }) => {
+  return (
+      <View style={styles.rowContainer}>
+        <Text style={[styles.rowText, { flex: 2, fontWeight: '600' }]} numberOfLines={1}>
+          {member.nama}
+        </Text>
 
-            {/* Table Header Row */}
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeadText, { flex: 2 }]}>Nama</Text>
-              <Text style={[styles.tableHeadText, styles.textCenter, { flex: 1 }]}>Kamar</Text>
-              <Text style={[styles.tableHeadText, styles.textCenter, { flex: 1 }]}>Kontak</Text>
-              <Text style={[styles.tableHeadText, styles.textCenter, { flex: 1.5 }]}>Status</Text>
-              <Text style={[styles.tableHeadText, styles.textCenter, { flex: 1.5 }]}>Edit</Text>
-            </View>
+        <View style={[styles.pillContainer, { flex: 1 }]}>
+          <Text style={styles.pillText}>{member.kamar}</Text>
+        </View>
 
-            {/* Table Body */}
-            <View style={{ gap: 8 }}>
-              {members.map((member) => (
-                <MemberRow key={member.id} member={member} />
-              ))}
-            </View>
+        <View style={[styles.pillContainer, { flex: 1.5 }]}>
+          <Text style={styles.pillText} numberOfLines={1}>{member.phone}</Text>
+        </View>
 
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={styles.statusText}>{member.status || "Aktif"}</Text>
+        </View>
+
+        <View style={styles.actionContainer}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => onEdit(member)}>
+            <Pencil size={14} color="#2563eb" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => member.id && onDelete(member.id)}>
+            <Trash2 size={14} color="#dc2626" />
+          </TouchableOpacity>
+        </View>
+      </View>
+  );
+};
+
+// ==========================================
+// MAIN PAGE
+// ==========================================
+export default function MembersPage() {
+  const router = useRouter();
+  const [members, setMembers] = useState<UserType[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingMember, setEditingMember] = useState<UserType | null>(null);
+
+  // FETCH DATA REALTIME DENGAN FILTER ID KOST
+  useEffect(() => {
+    // Query: Ambil users di mana role='user' DAN idKost = KOST ADMIN SAAT INI
+    const q = query(
+        collection(db, "users"),
+        where("role", "==", "user"),
+        where("idKost", "==", CURRENT_ADMIN_KOST_ID),
+        orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const loaded: UserType[] = [];
+      snapshot.forEach((doc) => {
+        loaded.push({ id: doc.id, ...doc.data() } as UserType);
+      });
+      // Sort manual by Kamar agar rapi
+      loaded.sort((a, b) => a.kamar.localeCompare(b.kamar, undefined, { numeric: true }));
+      setMembers(loaded);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching members:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleAdd = () => {
+    setEditingMember(null);
+    setModalVisible(true);
+  };
+
+  const handleEdit = (member: UserType) => {
+    setEditingMember(member);
+    setModalVisible(true);
+  };
+
+  const handleDelete = (id: string) => {
+    Alert.alert("Hapus Member", "User ini tidak akan bisa login lagi. Lanjutkan?", [
+      { text: "Batal", style: "cancel" },
+      { text: "Hapus", style: "destructive", onPress: () => deleteMember(id) }
+    ]);
+  };
+
+  return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor="#f3f4f6" />
+
+        {/* Header */}
+        <View style={styles.header}>
+          <Image source={require("../../../../assets/kostmunity-logo.png")} style={styles.headerLogo} resizeMode="contain" />
+          <Text style={styles.headerTitle}>Kostmunity</Text>
+          <View>
+            <Text style={styles.headerSubtitleTop}>Admin</Text>
+            <Text style={styles.headerSubtitleBottom}>Dashboard</Text>
           </View>
         </View>
 
-      </ScrollView>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View>
+                <Text style={styles.cardTitle}>Manajemen Member</Text>
+                <Text style={styles.cardSubtitle}>Daftar Penghuni & Akun User</Text>
+              </View>
+              <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
+                <Plus size={14} color="#fff" style={{ marginRight: 4 }} />
+                <Text style={styles.addButtonText}>Tambah</Text>
+              </TouchableOpacity>
+            </View>
 
-      {/* Floating Action Button (FAB) */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fabButton}
-          onPress={() => router.replace("/dashboard/admin")}
-        >
-          <Home size={20} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={styles.fabText}>Home</Text>
-        </TouchableOpacity>
-      </View>
+            <View style={styles.cardContent}>
+              <View style={styles.tableHeader}>
+                <Text style={[styles.headText, { flex: 2 }]}>Nama</Text>
+                <Text style={[styles.headText, { flex: 1, textAlign: 'center' }]}>Kamar</Text>
+                <Text style={[styles.headText, { flex: 1.5, textAlign: 'center' }]}>Kontak</Text>
+                <Text style={[styles.headText, { flex: 1, textAlign: 'center' }]}>Status</Text>
+                <Text style={[styles.headText, { flex: 1, textAlign: 'center' }]}>Edit</Text>
+              </View>
+              <View style={styles.separator} />
 
-    </SafeAreaView>
+              {loading ? (
+                  <ActivityIndicator style={{ margin: 20 }} color="#333" />
+              ) : members.length === 0 ? (
+                  <Text style={{ textAlign: 'center', color: '#999', margin: 20 }}>Belum ada member di Kost ini.</Text>
+              ) : (
+                  <View style={{ gap: 8 }}>
+                    {members.map((m) => (
+                        <MemberRow key={m.id} member={m} onEdit={handleEdit} onDelete={handleDelete} />
+                    ))}
+                  </View>
+              )}
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* FAB Home */}
+        <View style={styles.fabContainer}>
+          <TouchableOpacity style={styles.fabButton} onPress={() => router.replace("/dashboard/admin")}>
+            <Home size={20} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.fabText}>Home</Text>
+          </TouchableOpacity>
+        </View>
+
+        <MemberModal visible={modalVisible} onClose={() => setModalVisible(false)} editData={editingMember} />
+      </SafeAreaView>
   );
 }
 
-// --- STYLES ---
+// --- STYLES (Sama seperti sebelumnya) ---
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#f3f4f6", // bg-gray-100
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 100, // Ruang untuk FAB
-  },
+  safeArea: { flex: 1, backgroundColor: "#f3f4f6" },
+  scrollContent: { padding: 16, paddingBottom: 100 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingTop: 16, paddingBottom: 24, gap: 8 },
+  headerLogo: { width: 30, height: 35 },
+  headerTitle: { fontSize: 24, fontWeight: "bold", color: "#1f2937" },
+  headerSubtitleTop: { fontSize: 10, color: "#6b7280" },
+  headerSubtitleBottom: { fontSize: 10, fontWeight: "bold", color: "#1f2937" },
+  card: { backgroundColor: "#fff", borderRadius: 12, overflow: "hidden", elevation: 2, shadowColor: "#000", shadowOpacity: 0.05 },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, borderBottomWidth: 1, borderBottomColor: "#e5e7eb" },
+  cardTitle: { fontSize: 18, fontWeight: "600", color: "#1f2937" },
+  cardSubtitle: { fontSize: 12, color: "#6b7280" },
+  addButton: { backgroundColor: "#1f2937", flexDirection: "row", alignItems: "center", paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
+  addButtonText: { color: "#fff", fontSize: 12, fontWeight: "500" },
+  cardContent: { padding: 16 },
+  tableHeader: { flexDirection: "row", marginBottom: 8, paddingHorizontal: 4 },
+  headText: { fontSize: 11, fontWeight: "bold", color: "#374151" },
+  separator: { height: 1, backgroundColor: "#374151", marginBottom: 12 },
+  rowContainer: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
+  rowText: { fontSize: 13, color: "#1f2937" },
+  pillContainer: { backgroundColor: "#e5e7eb", borderRadius: 10, paddingVertical: 4, paddingHorizontal: 8, marginHorizontal: 4, alignItems: 'center' },
+  pillText: { fontSize: 11, color: "#374151", fontWeight: "500" },
+  statusText: { fontSize: 11, color: "#4b5563" },
+  actionContainer: { flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  iconBtn: { padding: 4, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 4 },
+  fabContainer: { position: "absolute", bottom: 24, left: 0, right: 0, alignItems: "center" },
+  fabButton: { backgroundColor: "#1f2937", flexDirection: "row", alignItems: "center", paddingHorizontal: 32, height: 56, borderRadius: 28, elevation: 6 },
+  fabText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+});
 
-  // Header Styles
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff",
-    paddingTop: Platform.OS === 'android' ? 16 : 8,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-    gap: 8,
-    zIndex: 50,
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  headerLogo: {
-    width: 30,
-    height: 35,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#1f2937",
-  },
-  headerSubtitleTop: {
-    fontSize: 12,
-    color: "#6b7280",
-    fontWeight: "600",
-    marginTop: 4,
-    lineHeight: 12,
-  },
-  headerSubtitleBottom: {
-    fontSize: 12,
-    fontWeight: "bold",
-    color: "#1f2937",
-    lineHeight: 14,
-  },
-
-  // Card Styles
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-    overflow: "hidden",
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1f2937",
-  },
-  cardSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  addButton: {
-    backgroundColor: "#1f2937", // bg-gray-800
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-  },
-  addButtonText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-
-  // Table Container Styles
-  cardContent: {
-    padding: 16,
-    backgroundColor: "#f9fafb", // bg-gray-50
-  },
-  tableHeader: {
-    flexDirection: "row",
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  tableHeadText: {
-    fontSize: 11, // Sedikit lebih kecil agar muat di layar HP
-    fontWeight: "bold",
-    color: "#6b7280",
-  },
-  textCenter: {
-    textAlign: "center",
-  },
-  centerContent: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // Row Styles
-  rowContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
-  },
-  rowText: {
-    fontSize: 13,
-    color: "#1f2937",
-  },
-
-  // Icon Button (Message)
-  iconButtonOutline: {
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    padding: 6,
-    borderRadius: 6,
-  },
-
-  // Badge Styles
-  badge: {
-    backgroundColor: "#dbeafe", // bg-blue-100
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#1d4ed8", // text-blue-700
-  },
-
-  // Action Buttons (Edit/Trash)
-  actionContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 8,
-  },
-  actionButton: {
-    padding: 4,
-  },
-
-  // FAB Styles
-  fabContainer: {
-    position: "absolute",
-    bottom: 24,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
-  fabButton: {
-    backgroundColor: "#1f2937",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 32,
-    height: 56,
-    borderRadius: 28,
-    elevation: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  fabText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+const modalStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 20 },
+  container: { backgroundColor: "#fff", borderRadius: 16, padding: 24, width: "100%" },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 20 },
+  title: { fontSize: 18, fontWeight: "bold", color: "#1f2937" },
+  subtitle: { fontSize: 12, color: "#6b7280" },
+  formGroup: { gap: 12, marginBottom: 20 },
+  input: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 8, padding: 12, fontSize: 14, color: "#1f2937" },
+  submitBtn: { backgroundColor: "#1f2937", paddingVertical: 12, borderRadius: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
+  submitText: { color: "#fff", fontWeight: "bold", fontSize: 14 },
 });
