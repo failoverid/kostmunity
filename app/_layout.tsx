@@ -30,6 +30,15 @@ export default function RootLayout() {
                         headerShown: false,
                     }}
                 />
+
+                {/* Test Auth */}
+                <Stack.Screen
+                    name="test-auth"
+                    options={{
+                        title: 'Firebase Auth Test',
+                        headerShown: true,
+                    }}
+                />
             </Stack>
 
             <StatusBar style="auto" />
