@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { ArrowRight, Edit3, Home, Upload, X } from "lucide-react-native"; // Tambah Edit3
+import { ArrowRight, Edit3, Home, Upload, X, Search, Plus, Trash2 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,35 +19,22 @@ import {
 } from "react-native";
 
 // --- FIREBASE IMPORTS ---
-import { addDoc, collection, onSnapshot, query } from "firebase/firestore";
-// Pastikan path ini benar sesuai struktur folder Anda
-import { db } from "../../../../lib/firebase-clients";
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '../../../../lib/firebase-clients';
+
+// --- IMPORT HOOKS & SERVICES BARU ---
+import { useTagihanList } from "../../../../hooks/useTagihan";
+import { deleteTagihan, updateTagihan } from "../../../../services/tagihanService";
+import { formatCurrency, formatDate, getStatusColor } from "../../../../lib/formatting";
+import { useAuth } from "../../../../contexts/AuthContext";
+import type { Tagihan } from "../../../../models/Tagihan";
 
 // ==========================================
-// 1. INTERFACES & HELPERS
+// HELPER FUNCTIONS (moved from lib for compatibility)
 // ==========================================
-
-interface TagihanUI {
-  id: string;
-  nama: string;
-  total: string;
-  jatuhTempo: string; // Baru: Sesuai gambar tabel
-  status: string;
-}
-
-export interface TagihanDB {
-  memberId: string;
-  room: string;
-  amount: number;
-  dueDate: string;
-  status: string;
-  createdAt: any;
-}
-
-const formatCurrency = (amount: number): string => {
-  if (!amount) return "0K";
-  // Format ribuan (Contoh: 1500000 -> 1.500K)
-  const formatted = (amount / 1000).toLocaleString('id-ID');
+// Note: These duplicate lib/formatting.ts but kept for backwards compatibility
+const formatRupiah = (num: number): string => {
+  const formatted = (num / 1000).toFixed(0);
   return `${formatted}K`;
 };
 
@@ -158,32 +145,38 @@ const AddBillModal = ({ visible, onClose }: AddBillModalProps) => {
 // ==========================================
 
 const StatusBadge = ({ status }: { status: string }) => {
-  const isLunas = status.toLowerCase() === "lunas";
+  const isLunas = status.toLowerCase() === "paid" || status.toLowerCase() === "lunas";
   return (
-      <View style={[styles.badge, isLunas ? styles.badgeSuccess : styles.badgeDanger]}>
-        <Text style={[styles.badgeText, isLunas ? styles.badgeTextSuccess : styles.badgeTextDanger]}>
+      <View style={[
+        styles.statusBadge,
+        { backgroundColor: isLunas ? '#dcfce7' : '#fee2e2' }
+      ]}>
+        <Text style={[
+          styles.statusText,
+          { color: isLunas ? '#059669' : '#dc2626' }
+        ]}>
           {status}
         </Text>
       </View>
   );
 };
 
-const BillingRow = ({ item }: { item: TagihanUI }) => (
+const BillingRow = ({ item }: { item: Tagihan }) => (
     <View style={styles.rowContainer}>
       {/* 1. Nama */}
-      <Text style={[styles.rowText, { flex: 2 }]} numberOfLines={1}>{item.nama}</Text>
+      <Text style={[styles.rowText, { flex: 2 }]} numberOfLines={1}>{item.memberName}</Text>
 
       {/* 2. Total (Bg Abu rounded di gambar) */}
       <View style={{ flex: 1.5, alignItems: 'center' }}>
-        <View style={styles.totalPill}>
-          <Text style={styles.totalText}>{item.total}</Text>
+        <View style={{ backgroundColor: '#f3f4f6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+          <Text style={{ fontSize: 13, color: '#374151', fontWeight: '600' }}>{formatCurrency(item.amount)}</Text>
         </View>
       </View>
 
       {/* 3. Jatuh Tempo (Bg Abu rounded di gambar) */}
       <View style={{ flex: 1.5, alignItems: 'center' }}>
-        <View style={styles.datePill}>
-          <Text style={styles.dateText}>{item.jatuhTempo}</Text>
+        <View style={{ backgroundColor: '#f3f4f6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+          <Text style={{ fontSize: 13, color: '#374151' }}>{item.dueDate}</Text>
         </View>
       </View>
 
@@ -194,7 +187,7 @@ const BillingRow = ({ item }: { item: TagihanUI }) => (
 
       {/* 5. Edit (Icon) */}
       <View style={{ flex: 0.8, alignItems: 'center' }}>
-        <TouchableOpacity style={styles.editIcon}>
+        <TouchableOpacity style={{ padding: 8 }}>
           <Edit3 size={14} color="#6b7280" />
         </TouchableOpacity>
       </View>
@@ -207,35 +200,84 @@ const BillingRow = ({ item }: { item: TagihanUI }) => (
 
 export default function BillingPage() {
   const router = useRouter();
-  const [tagihanList, setTagihanList] = useState<TagihanUI[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  
+  const kostId = user?.kostId || "kost_kurnia_01"; // Fallback for development
+  
+  // GUNAKAN HOOKS BARU
+  const { tagihan: tagihanList, loading, error, refetch } = useTagihanList('kost', kostId);
+  
   const [modalVisible, setModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
 
-  useEffect(() => {
-    // Menggunakan onSnapshot untuk Realtime update
-    const q = query(collection(db, "tagihan"));
+  // Filter tagihan
+  const filteredTagihan = tagihanList.filter((tagihan: Tagihan) => {
+    const matchesSearch = (tagihan.memberName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         tagihan.room.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = selectedStatus === "all" || tagihan.status === selectedStatus;
+    return matchesSearch && matchesStatus;
+  });
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const loadedData: TagihanUI[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data() as TagihanDB;
-        loadedData.push({
-          id: doc.id,
-          nama: data.memberId || "Tanpa Nama", // Asumsi memberId menyimpan nama sementara
-          total: formatCurrency(data.amount),
-          jatuhTempo: data.dueDate || "-",
-          status: formatStatus(data.status || "Belum Bayar"),
-        });
-      });
-      setTagihanList(loadedData);
-      setLoading(false);
-    }, (err) => {
-      console.error(err);
-      setLoading(false);
-    });
+  const handleUpdateStatus = async (id: string, newStatus: 'Belum Lunas' | 'Lunas' | 'Terlambat') => {
+    try {
+      await updateTagihan(id, { status: newStatus });
+      Alert.alert("Berhasil", "Status tagihan berhasil diupdate");
+      refetch();
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Gagal mengupdate status tagihan");
+    }
+  };
 
-    return () => unsubscribe();
-  }, []);
+  const handleDeleteTagihan = async (id: string, memberName?: string) => {
+    Alert.alert(
+      "Hapus Tagihan",
+      `Yakin ingin menghapus tagihan ${memberName || 'ini'}?`,
+      [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Hapus",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteTagihan(id);
+              Alert.alert("Berhasil", "Tagihan berhasil dihapus");
+              refetch();
+            } catch (error: any) {
+              Alert.alert("Error", error.message || "Gagal menghapus tagihan");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <View style={[styles.safeArea, { justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator size="large" color="#6366f1" />
+        <Text style={{ marginTop: 12, color: "#6b7280" }}>Memuat data tagihan...</Text>
+      </View>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <View style={[styles.safeArea, { justifyContent: "center", alignItems: "center", padding: 20 }]}>
+        <Text style={{ color: "#dc2626", fontSize: 16, textAlign: "center", marginBottom: 20 }}>
+          Error: {error.message}
+        </Text>
+        <TouchableOpacity 
+          style={{ backgroundColor: "#6366f1", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
+          onPress={refetch}
+        >
+          <Text style={{ color: "#fff", fontSize: 16, fontWeight: "600" }}>Coba Lagi</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
       <SafeAreaView style={styles.safeArea}>
@@ -256,35 +298,135 @@ export default function BillingPage() {
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <View>
-                <Text style={styles.cardTitle}>Manajemen</Text>
-                <Text style={styles.cardTitle}>Tagihan</Text>
-                <Text style={styles.cardSubtitle}>Oktober 2025</Text>
+                <Text style={styles.cardTitle}>Manajemen Tagihan</Text>
+                <Text style={styles.cardSubtitle}>
+                  Total: {tagihanList.length} | Lunas: {tagihanList.filter((t: Tagihan) => t.status === "Lunas").length}
+                </Text>
               </View>
               <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
-                <Text style={styles.addButtonText}>Tambah +</Text>
+                <Plus size={14} color="#fff" style={{ marginRight: 4 }} />
+                <Text style={styles.addButtonText}>Tambah</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Search & Filter */}
+            <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f9fafb", borderRadius: 8, paddingHorizontal: 12, marginBottom: 12 }}>
+                <Search size={18} color="#6b7280" />
+                <TextInput
+                  style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 12, color: "#111827" }}
+                  placeholder="Cari nama, kamar..."
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <TouchableOpacity
+                  style={[styles.filterChip, selectedStatus === "all" && styles.filterChipActive]}
+                  onPress={() => setSelectedStatus("all")}
+                >
+                  <Text style={[styles.filterText, selectedStatus === "all" && styles.filterTextActive]}>
+                    Semua ({tagihanList.length})
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterChip, selectedStatus === "Lunas" && styles.filterChipActive]}
+                  onPress={() => setSelectedStatus("Lunas")}
+                >
+                  <Text style={[styles.filterText, selectedStatus === "Lunas" && styles.filterTextActive]}>
+                    Lunas ({tagihanList.filter((t: Tagihan) => t.status === "Lunas").length})
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterChip, selectedStatus === "Belum Lunas" && styles.filterChipActive]}
+                  onPress={() => setSelectedStatus("Belum Lunas")}
+                >
+                  <Text style={[styles.filterText, selectedStatus === "Belum Lunas" && styles.filterTextActive]}>
+                    Belum Bayar ({tagihanList.filter((t: Tagihan) => t.status === "Belum Lunas").length})
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterChip, selectedStatus === "Terlambat" && styles.filterChipActive]}
+                  onPress={() => setSelectedStatus("Terlambat")}
+                >
+                  <Text style={[styles.filterText, selectedStatus === "Terlambat" && styles.filterTextActive]}>
+                    Terlambat ({tagihanList.filter((t: Tagihan) => t.status === "Terlambat").length})
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
 
             {/* Table Content */}
             <View style={styles.cardContent}>
-              {/* Table Header - Sesuai Gambar 1 */}
+              {/* Table Header */}
               <View style={styles.tableHeader}>
                 <Text style={[styles.tableHeadText, { flex: 2 }]}>Nama</Text>
+                <Text style={[styles.tableHeadText, { flex: 1.5, textAlign: 'center' }]}>Kamar</Text>
                 <Text style={[styles.tableHeadText, { flex: 1.5, textAlign: 'center' }]}>Total</Text>
-                <Text style={[styles.tableHeadText, { flex: 1.5, textAlign: 'center' }]}>Jatuh{'\n'}Tempo</Text>
+                <Text style={[styles.tableHeadText, { flex: 1.5, textAlign: 'center' }]}>Jatuh Tempo</Text>
                 <Text style={[styles.tableHeadText, { flex: 1.5, textAlign: 'center' }]}>Status</Text>
-                <Text style={[styles.tableHeadText, { flex: 0.8, textAlign: 'center' }]}>Edit</Text>
+                <Text style={[styles.tableHeadText, { flex: 1, textAlign: 'center' }]}>Aksi</Text>
               </View>
 
               <View style={styles.separator} />
 
               {/* List Data */}
-              {loading ? (
-                  <ActivityIndicator style={{marginTop: 20}} color="#333"/>
-              ) : tagihanList.length === 0 ? (
-                  <Text style={{textAlign:'center', marginTop: 20, color:'#999'}}>Belum ada data</Text>
+              {filteredTagihan.length === 0 ? (
+                  <View style={{ padding: 40, alignItems: "center" }}>
+                    <Text style={{ color: "#6b7280", fontSize: 16 }}>
+                      {searchQuery ? "Tidak ada tagihan ditemukan" : "Belum ada tagihan"}
+                    </Text>
+                  </View>
               ) : (
-                  tagihanList.map((item) => <BillingRow key={item.id} item={item} />)
+                filteredTagihan.map((item: Tagihan) => (
+                    <View key={item.id} style={styles.rowContainer}>
+                      <View style={{ flex: 2 }}>
+                        <Text style={[styles.rowText, { fontWeight: '600' }]} numberOfLines={1}>
+                          {item.memberName}
+                        </Text>
+                      </View>
+
+                      <View style={{ flex: 1.5, alignItems: 'center' }}>
+                        <View style={styles.pillContainer}>
+                          <Text style={styles.pillText}>{item.room}</Text>
+                        </View>
+                      </View>
+
+                      <View style={{ flex: 1.5, alignItems: 'center' }}>
+                        <Text style={[styles.rowText, { fontWeight: '700', color: '#059669' }]}>
+                          {formatCurrency(item.amount)}
+                        </Text>
+                      </View>
+
+                      <View style={{ flex: 1.5, alignItems: 'center' }}>
+                        <Text style={[styles.rowText, { color: '#6b7280' }]}>
+                          {item.dueDate}
+                        </Text>
+                      </View>
+
+                      <View style={{ flex: 1.5, alignItems: 'center' }}>
+                        <StatusBadge status={item.status} />
+                      </View>
+
+                      <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 4 }}>
+                        {item.status === "Belum Lunas" && (
+                          <TouchableOpacity 
+                            style={[styles.iconBtn, { backgroundColor: '#dcfce7' }]}
+                            onPress={() => handleUpdateStatus(item.id, "Lunas")}
+                          >
+                            <Text style={{ fontSize: 12, color: "#059669", fontWeight: "700" }}>✓</Text>
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity 
+                          style={[styles.iconBtn, { backgroundColor: '#fee2e2' }]}
+                          onPress={() => handleDeleteTagihan(item.id, item.memberName)}
+                        >
+                          <Trash2 size={12} color="#dc2626" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
               )}
             </View>
           </View>
@@ -325,35 +467,35 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 22, fontWeight: "bold", color: "#333", lineHeight: 26 },
   cardSubtitle: { fontSize: 14, color: "#666", marginTop: 4 },
 
-  // Tombol Tambah (Hitam Pill)
-  addButton: { backgroundColor: "#333", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20 },
+  // Tombol Tambah
+  addButton: { backgroundColor: "#333", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, flexDirection: "row", alignItems: "center" },
   addButtonText: { color: "#fff", fontSize: 12, fontWeight: "600" },
+
+  // Filter Chips
+  filterChip: { backgroundColor: "#f3f4f6", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8 },
+  filterChipActive: { backgroundColor: "#6366f1" },
+  filterText: { color: "#6b7280", fontSize: 13, fontWeight: "600" },
+  filterTextActive: { color: "#fff" },
 
   // Table
   cardContent: {},
   tableHeader: { flexDirection: "row", alignItems: "center", paddingBottom: 12 },
   tableHeadText: { fontSize: 12, fontWeight: "bold", color: "#333" },
-  separator: { height: 1, backgroundColor: "#000", marginBottom: 12 }, // Garis hitam tegas sesuai gambar
+  separator: { height: 1, backgroundColor: "#000", marginBottom: 12 },
 
   // Row
   rowContainer: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
   rowText: { fontSize: 13, color: "#333", fontWeight: "500" },
 
-  // Pills (Background abu-abu lonjong untuk Total & Date)
-  totalPill: { backgroundColor: "#e5e7eb", paddingVertical: 4, paddingHorizontal: 12, borderRadius: 10, width: '90%', alignItems: 'center' },
-  totalText: { fontSize: 11, fontWeight: "bold", color: "#333" },
-  datePill: { backgroundColor: "#e5e7eb", paddingVertical: 4, paddingHorizontal: 12, borderRadius: 10, width: '90%', alignItems: 'center' },
-  dateText: { fontSize: 11, color: "#555" },
+  // Pills
+  pillContainer: { backgroundColor: "#e5e7eb", paddingVertical: 4, paddingHorizontal: 12, borderRadius: 10 },
+  pillText: { fontSize: 11, color: "#374151", fontWeight: "500" },
+  
+  // Status Badge
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  statusText: { fontSize: 11, color: "#fff", fontWeight: "600" },
 
-  // Badges Status
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }, // Kotak rounded, bukan full circle
-  badgeSuccess: { backgroundColor: "transparent" }, // Di gambar backgroundnya transparan/putih textnya yg berwarna? atau abu? Saya buat simple
-  badgeDanger: { backgroundColor: "transparent" },
-  badgeText: { fontSize: 12 },
-  badgeTextSuccess: { color: "#666" }, // Sesuai gambar "Lunas" warna abu gelap
-  badgeTextDanger: { color: "#666" },  // Sesuai gambar "Belum Lunas" warna abu gelap
-
-  editIcon: { padding: 4, borderWidth: 1, borderColor: '#ccc', borderRadius: 4 },
+  iconBtn: { padding: 6, borderRadius: 4 },
 
   // FAB
   fabContainer: { position: "absolute", bottom: 24, left: 0, right: 0, alignItems: "center" },

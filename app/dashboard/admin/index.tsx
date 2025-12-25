@@ -26,12 +26,19 @@ import {
 // --- FIREBASE IMPORTS ---
 import { collection, doc, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../../lib/firebase-clients";
-// Import service update yang baru dibuat
-import { ProfileKostType, updateKostProfile } from "../../../lib/kost-services";
 
-// --- KONFIGURASI ID KOST (SIMULASI LOGIN) ---
-// Dalam aplikasi nyata, ID ini didapat dari User Context / Auth setelah Login
-const CURRENT_ADMIN_KOST_ID = "kost_kurnia_01"; // Ganti dengan ID dokumen asli di Firestore Anda
+// --- IMPORT SERVICES & HOOKS BARU ---
+import { useMembers } from "../../../hooks/useMembers";
+import { useTagihanList } from "../../../hooks/useTagihan";
+import { MemberInfo } from "../../../models/MemberInfo";
+
+import { formatCurrency, formatDate, getStatusColor } from "../../../lib/formatting";
+import { useAuth } from "../../../contexts/AuthContext";
+import { getActiveFeedbackCount } from "../../../services/feedbackService";
+import { getActiveLostItemsCount } from "../../../services/lostFoundService";
+
+// Import service update yang baru dibuat
+import { ProfileKostType, updateKostProfile } from "../../../services/kostService";
 
 // --- INTERFACES ---
 interface MemberData { id: string; nama: string; kamar: string; status: string; }
@@ -106,13 +113,13 @@ const MiniMemberRow = ({ item }: { item: MemberData }) => (
     </View>
 );
 
-const MiniBillRow = ({ item }: { item: BillData }) => {
-  const isLunas = item.status.toLowerCase() === 'lunas';
+const MiniBillRow = ({ item }: { item: any }) => {
+  const isLunas = item.status === 'paid';
   return (
       <View style={styles.miniRow}>
-        <Text style={[styles.miniText, { flex: 1.5 }]} numberOfLines={1}>{item.nama}</Text>
+        <Text style={[styles.miniText, { flex: 1.5 }]} numberOfLines={1}>{item.memberName}</Text>
         <View style={[styles.miniPill, { flex: 1 }]}>
-          <Text style={styles.miniPillText}>{(item.total / 1000)}K</Text>
+          <Text style={styles.miniPillText}>{formatCurrency(item.amount)}</Text>
         </View>
         <View style={{ flex: 1.2, alignItems:'flex-end' }}>
           <View style={[styles.statusBadge, isLunas ? {backgroundColor: '#dcfce7'} : {backgroundColor: '#fee2e2'}]}>
@@ -139,102 +146,80 @@ const MiniServiceRow = ({ item }: { item: ServiceData }) => (
 // --- KOMPONEN UTAMA ---
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+
+  // Redirect if not admin
+  useEffect(() => {
+    if (user && user.role !== 'admin' && user.role !== 'owner') {
+      router.replace('/dashboard/member');
+    }
+  }, [user]);
+
+  const kostId = user?.kostId || "kost_kurnia_01"; // Fallback for development
+
+  // --- USE HOOKS BARU ---
+  const { members: allMembers, loading: loadingMembers } = useMembers(kostId);
+  const { tagihan: tagihanList, loading: loadingTagihan } = useTagihanList('kost', kostId);
 
   // --- STATE KOST PROFILE ---
   const [kostProfile, setKostProfile] = useState<ProfileKostType | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState("");
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
-  // --- STATE DATA ---
-  const [members, setMembers] = useState<MemberData[]>([]);
-  const [bills, setBills] = useState<BillData[]>([]);
-  const [services, setServices] = useState<ServiceData[]>([]);
+  // --- STATE COUNTERS ---
+  const [feedbackCount, setFeedbackCount] = useState(0);
+  const [lostFoundCount, setLostFoundCount] = useState(0);
+  const [services, setServices] = useState<any[]>([]);
+  const [counts, setCounts] = useState({ activeComplaint: 0, activeLostFound: 0, activeBills: 0 });
 
-  // --- STATE COUNTS ---
-  const [counts, setCounts] = useState({
-    members: 0,
-    activeBills: 0,
-    activeComplaint: 0,
-    activeLostFound: 0
-  });
-
-  // --- FETCH DATA REALTIME ---
+  // --- FETCH KOST PROFILE ---
   useEffect(() => {
-    // 0. FETCH KOST PROFILE (Realtime agar saat diedit langsung berubah)
-    const unsubKost = onSnapshot(doc(db, "profileKost", CURRENT_ADMIN_KOST_ID), (docSnap) => {
+    if (!kostId) return;
+    const unsubKost = onSnapshot(doc(db, "profileKost", kostId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as ProfileKostType;
-        setKostProfile({ id: docSnap.id, ...data });
-        setTempName(data.name); // Set initial temp name
-      } else {
-        console.log("No Kost Profile Found");
+        setKostProfile({ ...data, id: docSnap.id } as any);
+        setTempName(data.name);
       }
+      setLoadingProfile(false);
     });
+    return () => unsubKost();
+  }, [kostId]);
 
-    // 1. MEMBERS (Users role='user')
-    const qMembers = query(collection(db, "users"), where("role", "==", "user"), orderBy("createdAt", "desc"));
-    const unsubMembers = onSnapshot(qMembers, (snap) => {
-      const allMembers = snap.docs.map(doc => ({
-        id: doc.id,
-        nama: doc.data().nama,
-        kamar: doc.data().kamar,
-        status: doc.data().status || "Aktif"
-      }));
-      setCounts(prev => ({ ...prev, members: allMembers.length }));
-      setMembers(allMembers.slice(0, 3));
-    });
-
-    // 2. TAGIHAN
-    const qBills = query(collection(db, "tagihan"), orderBy("createdAt", "desc"));
-    const unsubBills = onSnapshot(qBills, (snap) => {
-      const allBills = snap.docs.map(doc => ({
-        id: doc.id,
-        nama: doc.data().memberId,
-        total: doc.data().amount,
-        status: doc.data().status,
-        dueDate: doc.data().dueDate
-      }));
-      const unpaidCount = allBills.filter(b => b.status.toLowerCase() !== 'lunas').length;
-      setCounts(prev => ({ ...prev, activeBills: unpaidCount }));
-      setBills(allBills.slice(0, 3));
-    });
-
-    // 3. LAYANAN
-    const qServices = query(collection(db, "ads"), orderBy("createdAt", "desc"), limit(3));
-    const unsubServices = onSnapshot(qServices, (snap) => {
-      const data = snap.docs.map(doc => ({
-        id: doc.id,
-        title: doc.data().title,
-        link: doc.data().link
-      }));
-      setServices(data);
-    });
-
-    // 4. FEEDBACK
-    const qFeedback = query(collection(db, "feedback"));
-    const unsubFeedback = onSnapshot(qFeedback, (snap) => {
-      const active = snap.docs.filter(doc => doc.data().status !== 'Selesai').length;
-      setCounts(prev => ({ ...prev, activeComplaint: active }));
-    });
-
-    // 5. LOST FOUND
-    const qLost = query(collection(db, "lostItems"));
-    const unsubLost = onSnapshot(qLost, (snap) => {
-      const active = snap.docs.filter(doc => doc.data().found === false).length;
-      setCounts(prev => ({ ...prev, activeLostFound: active }));
-      setLoading(false);
-    });
-
-    return () => {
-      unsubKost();
-      unsubMembers();
-      unsubBills();
-      unsubServices();
-      unsubFeedback();
-      unsubLost();
+  // --- FETCH FEEDBACK & LOST ITEMS COUNT ---
+  useEffect(() => {
+    if (!kostId) return;
+    
+    const fetchCounts = async () => {
+      try {
+        const [feedback, lostItems] = await Promise.all([
+          getActiveFeedbackCount(kostId),
+          getActiveLostItemsCount(kostId)
+        ]);
+        setFeedbackCount(feedback);
+        setLostFoundCount(lostItems);
+      } catch (error) {
+        console.error('Error fetching counts:', error);
+      }
     };
-  }, []);
+
+    fetchCounts();
+    // Refresh counts every 30 seconds
+    const interval = setInterval(fetchCounts, 30000);
+    return () => clearInterval(interval);
+  }, [kostId]);
+
+  // --- DERIVED DATA ---
+  const members: MemberData[] = allMembers.slice(0, 3).map((m: MemberInfo) => ({
+    id: m.id,
+    nama: m.name,
+    kamar: m.room,
+    status: m.status || 'active'
+  })); // Top 3 members untuk ditampilkan
+  const bills = tagihanList.slice(0, 3); // Top 3 tagihan untuk ditampilkan
+
+  const loading = loadingMembers || loadingTagihan || loadingProfile;
 
   // --- HANDLER UPDATE NAMA KOST ---
   const handleSaveName = async () => {
@@ -244,13 +229,24 @@ export default function AdminDashboardPage() {
     }
 
     try {
-      await updateKostProfile(CURRENT_ADMIN_KOST_ID, { name: tempName });
+      await updateKostProfile(kostId, { name: tempName });
       setIsEditingName(false);
+      Alert.alert("Berhasil", "Nama kost berhasil diupdate");
     } catch (error) {
       Alert.alert("Gagal", "Terjadi kesalahan saat menyimpan nama kost");
       console.error(error);
     }
   };
+
+  // --- LOADING STATE ---
+  if (loading) {
+    return (
+      <View style={[styles.safeArea, { justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator size="large" color="#6366f1" />
+        <Text style={{ marginTop: 12, color: "#6b7280" }}>Memuat data...</Text>
+      </View>
+    );
+  }
 
   return (
       <SafeAreaView style={styles.safeArea}>
@@ -313,17 +309,21 @@ export default function AdminDashboardPage() {
             <View style={{ flex: 1 }}>
               <StatBox
                   title="Kamar Terisi"
-                  value={counts.members}
+                  value={allMembers.length}
                   // Menampilkan Kapasitas jika data kostProfile ada
                   subtext={kostProfile ? `dari ${kostProfile.rooms} kamar` : ""}
                   loading={loading}
               />
             </View>
             <View style={{ flex: 1 }}>
-              <StatBox title="Tagihan Aktif" value={counts.activeBills} loading={loading} />
+              <StatBox 
+                title="Tagihan Aktif" 
+                value={tagihanList.filter((t: any) => t.status === "Belum Lunas").length} 
+                loading={loading} 
+              />
             </View>
             <View style={{ flex: 1 }}>
-              <StatBox title="Aduan Baru" value={counts.activeComplaint} loading={loading} />
+              <StatBox title="Aduan Baru" value={feedbackCount} loading={loading} />
             </View>
           </View>
 

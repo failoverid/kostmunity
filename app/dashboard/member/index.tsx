@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
@@ -8,17 +8,28 @@ import {
     TouchableOpacity,
     SafeAreaView,
     StatusBar,
-    Platform
+    Platform,
+    ActivityIndicator
 } from "react-native";
 import {
     MapPin,
     HeartHandshake,
     FileSearch,
     MessageSquarePlus,
-    ArrowRight
+    ArrowRight,
+    CreditCard,
+    AlertCircle
 } from "lucide-react-native";
 import { useRouter } from "expo-router";
-import FloatingNavbar from "@/components/FloatingNavbar"; // Navbar Baru
+import FloatingNavbar from "@/components/FloatingNavbar";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../../../lib/firebase-clients";
+import { useTagihanList } from "../../../hooks/useTagihan";
+import { formatCurrency } from "../../../lib/formatting";
+import { useAuth } from "../../../contexts/AuthContext";
+
+// TODO: Get from Auth Context
+// const CURRENT_MEMBER_ID = "member_001"; // DEPRECATED - using Auth Context now
 
 const COLORS = {
     background: "#181A20",
@@ -26,7 +37,9 @@ const COLORS = {
     purple: "#6C5CE7",
     lime: "#C6F432",
     textWhite: "#FFFFFF",
-    textGray: "#9E9E9E"
+    textGray: "#9E9E9E",
+    red: "#FF4444",
+    orange: "#FF9800"
 };
 
 const FeatureCard = ({
@@ -53,6 +66,46 @@ const FeatureCard = ({
 
 export default function MemberDashboard() {
     const router = useRouter();
+    const { user } = useAuth();
+    
+    const memberId = user?.memberId || user?.uid || "member_001"; // Fallback for development
+    
+    const [memberData, setMemberData] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    
+    // Fetch tagihan data
+    const { tagihan: tagihanList, loading: loadingTagihan } = useTagihanList('member', memberId);
+
+    useEffect(() => {
+        if (!memberId) return;
+        // Fetch member info
+        const unsubscribe = onSnapshot(
+            doc(db, "memberInfo", memberId),
+            (docSnap) => {
+                if (docSnap.exists()) {
+                    setMemberData({ id: docSnap.id, ...docSnap.data() });
+                }
+                setLoading(false);
+            },
+            (error) => {
+                console.error("Error fetching member:", error);
+                setLoading(false);
+            }
+        );
+        return () => unsubscribe();
+    }, [memberId]);
+
+    // Calculate tagihan stats
+    const unpaidTagihan = tagihanList.filter((t: any) => t.status === "unpaid" || t.status === "overdue");
+    const totalUnpaid = unpaidTagihan.reduce((sum: number, t: any) => sum + t.amount, 0);
+
+    if (loading && loadingTagihan) {
+        return (
+            <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+                <ActivityIndicator size="large" color={COLORS.lime} />
+            </View>
+        );
+    }
 
     return (
         <SafeAreaView style={styles.container}>
@@ -73,13 +126,15 @@ export default function MemberDashboard() {
 
                 <View style={styles.welcomeCard}>
                     <View style={styles.welcomeTextContainer}>
-                        <Text style={styles.welcomeTitle}>Hi, Marsheli</Text>
+                        <Text style={styles.welcomeTitle}>Hi, {memberData?.nama || user?.nama || "Member"}</Text>
                         <Text style={styles.welcomeSubtitle}>
-                            Udah diingetin sarapan belum nih sama doi?!
+                            Selamat datang di dashboard Anda
                         </Text>
                         <View style={styles.locationBadge}>
                             <MapPin size={14} color="#000" style={{ marginRight: 4 }} />
-                            <Text style={styles.locationText}>Kost Kurnia</Text>
+                            <Text style={styles.locationText}>
+                                Kamar {memberData?.kamar || "-"}
+                            </Text>
                         </View>
                     </View>
                     <View style={styles.graphicContainer}>
@@ -91,21 +146,43 @@ export default function MemberDashboard() {
                     </View>
                 </View>
 
-                <View style={styles.billCard}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.billTitle}>Tagihan Terdekat</Text>
-                        <Text style={styles.billSubtitle}>
-                            Uang Kos September - Oktober 2025
-                        </Text>
-                        <Text style={styles.billAmount}>Rp. 1.600.000</Text>
+                {/* Tagihan Card */}
+                {unpaidTagihan.length > 0 ? (
+                    <View style={styles.billCard}>
+                        <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                                <CreditCard size={20} color={COLORS.red} />
+                                <Text style={[styles.billTitle, { marginLeft: 8 }]}>
+                                    {unpaidTagihan.length} Tagihan Belum Dibayar
+                                </Text>
+                            </View>
+                            <Text style={styles.billSubtitle}>
+                                Total yang harus dibayar
+                            </Text>
+                            <Text style={styles.billAmount}>{formatCurrency(totalUnpaid)}</Text>
+                        </View>
+                        <TouchableOpacity
+                            style={styles.payButton}
+                            onPress={() => router.push("/dashboard/member/billing")}
+                        >
+                            <Text style={styles.payButtonText}>Bayar</Text>
+                        </TouchableOpacity>
                     </View>
-                    <TouchableOpacity
-                        style={styles.payButton}
-                        onPress={() => router.push("/dashboard/member/billing")}
-                    >
-                        <Text style={styles.payButtonText}>Bayar</Text>
-                    </TouchableOpacity>
-                </View>
+                ) : (
+                    <View style={[styles.billCard, { backgroundColor: "#1a4d2e" }]}>
+                        <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                                <AlertCircle size={20} color={COLORS.lime} />
+                                <Text style={[styles.billTitle, { marginLeft: 8 }]}>
+                                    Tidak Ada Tagihan
+                                </Text>
+                            </View>
+                            <Text style={styles.billSubtitle}>
+                                Semua tagihan sudah lunas!
+                            </Text>
+                        </View>
+                    </View>
+                )}
 
                 <View style={styles.gridContainer}>
                     <FeatureCard

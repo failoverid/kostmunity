@@ -4,24 +4,32 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { AuthProvider } from '@/contexts/AuthContext';
 
 export default function RootLayout() {
     const colorScheme = useColorScheme();
 
     return (
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <Stack screenOptions={{ headerShown: false }}>
-                {/* Home */}
+        <AuthProvider>
+            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                <Stack screenOptions={{ headerShown: false }}>
+                {/* Splash Screen - First entry point */}
                 <Stack.Screen name="index" />
 
-                {/* Tabs */}
-                <Stack.Screen name="(tabs)" />
+                {/* Splash Screen */}
+                <Stack.Screen name="splash" />
 
-                {/* Auth Group */}
+                {/* Landing Page */}
+                <Stack.Screen name="landing" />
+
+                {/* Auth Group - Login & Register */}
                 <Stack.Screen name="(auth)" />
 
                 {/* Dashboard */}
                 <Stack.Screen name="dashboard" />
+
+                {/* Tabs */}
+                <Stack.Screen name="(tabs)" />
 
                 {/* Modal */}
                 <Stack.Screen
@@ -45,5 +53,6 @@ export default function RootLayout() {
 
             <StatusBar style="auto" />
         </ThemeProvider>
+        </AuthProvider>
     );
 }

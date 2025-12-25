@@ -1,6 +1,7 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+// Utility function for className merging
+// Note: clsx and tailwind-merge not needed for React Native
+export type ClassValue = string | undefined | null | false;
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+export function cn(...inputs: ClassValue[]): string {
+  return inputs.filter(Boolean).join(' ');
 }

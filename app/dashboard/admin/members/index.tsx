@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { ArrowRight, Home, Pencil, Plus, Trash2, X } from "lucide-react-native";
+import { ArrowRight, Home, Pencil, Plus, Trash2, X, Search, UserPlus, Edit } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,11 +19,21 @@ import {
 // --- FIREBASE IMPORTS ---
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../../../lib/firebase-clients";
-import { createMember, deleteMember, updateMember, UserType } from "../../../../lib/user-services"; // Import fungsi yang kita buat tadi
+
+// --- IMPORT SERVICES & HOOKS BARU ---
+import { useMembers } from "../../../../hooks/useMembers";
+import { 
+  deleteMember as deleteMemberService, 
+  updateMember,
+  createMember 
+} from "../../../../services/memberService";
+import { MemberInfo } from "../../../../models/MemberInfo";
+import { formatCurrency, formatDate, getStatusColor } from "../../../../lib/formatting";
+import { useAuth } from "../../../../contexts/AuthContext";
 
 // --- SIMULASI AUTH ---
 // Ganti string ini dengan ID Kost milik Admin yang sedang Login
-const CURRENT_ADMIN_KOST_ID = "kost_kurnia_01";
+// const CURRENT_ADMIN_KOST_ID = "kost_kurnia_01"; // DEPRECATED - using Auth Context now
 
 // ==========================================
 // COMPONENT: ADD/EDIT MEMBER MODAL
@@ -31,48 +41,53 @@ const CURRENT_ADMIN_KOST_ID = "kost_kurnia_01";
 interface MemberModalProps {
   visible: boolean;
   onClose: () => void;
-  editData: UserType | null;
+  editData: MemberInfo | null;
 }
 
 const MemberModal = ({ visible, onClose, editData }: MemberModalProps) => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
 
   // Form State
-  const [nama, setNama] = useState("");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [kamar, setKamar] = useState("");
+  const [room, setRoom] = useState("");
 
   useEffect(() => {
     if (editData) {
-      setNama(editData.nama);
+      setName(editData.name);
       setEmail(editData.email);
       setPhone(editData.phone);
-      setKamar(editData.kamar);
+      setRoom(editData.room);
     } else {
-      setNama(""); setEmail(""); setPhone(""); setKamar("");
+      setName(""); setEmail(""); setPhone(""); setRoom("");
     }
   }, [editData, visible]);
 
   const handleSubmit = async () => {
-    if (!nama || !email || !phone || !kamar) {
+    if (!name || !email || !phone || !room) {
       Alert.alert("Mohon Lengkapi", "Nama, Email, HP, dan Kamar wajib diisi.");
       return;
     }
+
+    const kostId = user?.kostId || "kost_kurnia_01"; // Fallback for development
 
     setLoading(true);
     try {
       if (editData && editData.id) {
         // MODE EDIT
-        await updateMember(editData.id, { nama, email, phone, kamar });
+        await updateMember(editData.id, { name, email, phone, room });
         Alert.alert("Berhasil", "Data member diperbarui.");
       } else {
         // MODE TAMBAH
-        await createMember(CURRENT_ADMIN_KOST_ID, {
-          nama,
+        await createMember({
+          name,
           email,
           phone,
-          kamar
+          room,
+          kostId,
+          status: 'active'
         });
         Alert.alert("Berhasil", "Member baru ditambahkan dengan password default: 123456");
       }
@@ -98,7 +113,7 @@ const MemberModal = ({ visible, onClose, editData }: MemberModalProps) => {
             </View>
 
             <View style={modalStyles.formGroup}>
-              <TextInput style={modalStyles.input} placeholder="Nama Lengkap" value={nama} onChangeText={setNama} />
+              <TextInput style={modalStyles.input} placeholder="Nama Lengkap" value={name} onChangeText={setName} />
               <TextInput
                   style={[modalStyles.input, editData && {backgroundColor: '#f3f4f6'}]}
                   placeholder="Email (Untuk Login)"
@@ -108,7 +123,7 @@ const MemberModal = ({ visible, onClose, editData }: MemberModalProps) => {
                   keyboardType="email-address"
                   autoCapitalize="none"
               />
-              <TextInput style={modalStyles.input} placeholder="Nomor Kamar (ex: A-01)" value={kamar} onChangeText={setKamar} />
+              <TextInput style={modalStyles.input} placeholder="Nomor Kamar (ex: A-01)" value={room} onChangeText={setRoom} />
               <TextInput style={modalStyles.input} placeholder="No. HP / Kontak" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
             </View>
 
@@ -129,15 +144,15 @@ const MemberModal = ({ visible, onClose, editData }: MemberModalProps) => {
 // ==========================================
 // COMPONENT: MEMBER ROW
 // ==========================================
-const MemberRow = ({ member, onEdit, onDelete }: { member: UserType, onEdit: (m: UserType) => void, onDelete: (id: string) => void }) => {
+const MemberRow = ({ member, onEdit, onDelete }: { member: MemberInfo, onEdit: (m: MemberInfo) => void, onDelete: (id: string) => void }) => {
   return (
       <View style={styles.rowContainer}>
         <Text style={[styles.rowText, { flex: 2, fontWeight: '600' }]} numberOfLines={1}>
-          {member.nama}
+          {member.name}
         </Text>
 
         <View style={[styles.pillContainer, { flex: 1 }]}>
-          <Text style={styles.pillText}>{member.kamar}</Text>
+          <Text style={styles.pillText}>{member.room}</Text>
         </View>
 
         <View style={[styles.pillContainer, { flex: 1.5 }]}>
@@ -145,7 +160,7 @@ const MemberRow = ({ member, onEdit, onDelete }: { member: UserType, onEdit: (m:
         </View>
 
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={styles.statusText}>{member.status || "Aktif"}</Text>
+          <Text style={styles.statusText}>{member.status || "active"}</Text>
         </View>
 
         <View style={styles.actionContainer}>
@@ -165,55 +180,82 @@ const MemberRow = ({ member, onEdit, onDelete }: { member: UserType, onEdit: (m:
 // ==========================================
 export default function MembersPage() {
   const router = useRouter();
-  const [members, setMembers] = useState<UserType[]>([]);
-  const [loading, setLoading] = useState(true);
-
+  const { user } = useAuth();
+  
+  const kostId = user?.kostId || "kost_kurnia_01"; // Fallback for development
+  
+  // GUNAKAN HOOKS BARU
+  const { members, loading, error, refetch } = useMembers(kostId);
+  
   const [modalVisible, setModalVisible] = useState(false);
-  const [editingMember, setEditingMember] = useState<UserType | null>(null);
+  const [editingMember, setEditingMember] = useState<any | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
 
-  // FETCH DATA REALTIME DENGAN FILTER ID KOST
-  useEffect(() => {
-    // Query: Ambil users di mana role='user' DAN idKost = KOST ADMIN SAAT INI
-    const q = query(
-        collection(db, "users"),
-        where("role", "==", "user"),
-        where("idKost", "==", CURRENT_ADMIN_KOST_ID),
-        orderBy("createdAt", "desc")
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const loaded: UserType[] = [];
-      snapshot.forEach((doc) => {
-        loaded.push({ id: doc.id, ...doc.data() } as UserType);
-      });
-      // Sort manual by Kamar agar rapi
-      loaded.sort((a, b) => a.kamar.localeCompare(b.kamar, undefined, { numeric: true }));
-      setMembers(loaded);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching members:", error);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
+  // Filter members berdasarkan search dan status
+  const filteredMembers = members.filter(member => {
+    const matchesSearch = member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         member.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         member.room.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = selectedStatus === "all" || member.status === selectedStatus;
+    return matchesSearch && matchesStatus;
+  });
 
   const handleAdd = () => {
     setEditingMember(null);
     setModalVisible(true);
   };
 
-  const handleEdit = (member: UserType) => {
+  const handleEdit = (member: MemberInfo) => {
     setEditingMember(member);
     setModalVisible(true);
   };
 
-  const handleDelete = (id: string) => {
-    Alert.alert("Hapus Member", "User ini tidak akan bisa login lagi. Lanjutkan?", [
+  const handleDelete = async (id: string, name: string) => {
+    Alert.alert("Hapus Member", `Yakin ingin menghapus ${name}? User ini tidak akan bisa login lagi.`, [
       { text: "Batal", style: "cancel" },
-      { text: "Hapus", style: "destructive", onPress: () => deleteMember(id) }
+      { 
+        text: "Hapus", 
+        style: "destructive", 
+        onPress: async () => {
+          try {
+            await deleteMemberService(id);
+            Alert.alert("Berhasil", "Member berhasil dihapus");
+            refetch();
+          } catch (error) {
+            Alert.alert("Error", "Gagal menghapus member");
+          }
+        }
+      }
     ]);
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <View style={[styles.safeArea, { justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator size="large" color="#6366f1" />
+        <Text style={{ marginTop: 12, color: "#6b7280" }}>Memuat data member...</Text>
+      </View>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <View style={[styles.safeArea, { justifyContent: "center", alignItems: "center", padding: 20 }]}>
+        <Text style={{ color: "#dc2626", fontSize: 16, textAlign: "center", marginBottom: 20 }}>
+          Error: {error.message}
+        </Text>
+        <TouchableOpacity 
+          style={{ backgroundColor: "#6366f1", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
+          onPress={refetch}
+        >
+          <Text style={{ color: "#fff", fontSize: 16, fontWeight: "600" }}>Coba Lagi</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
       <SafeAreaView style={styles.safeArea}>
@@ -234,7 +276,9 @@ export default function MembersPage() {
             <View style={styles.cardHeader}>
               <View>
                 <Text style={styles.cardTitle}>Manajemen Member</Text>
-                <Text style={styles.cardSubtitle}>Daftar Penghuni & Akun User</Text>
+                <Text style={styles.cardSubtitle}>
+                  Total: {members.length} member | Aktif: {members.filter(m => m.status === "active").length}
+                </Text>
               </View>
               <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
                 <Plus size={14} color="#fff" style={{ marginRight: 4 }} />
@@ -242,27 +286,101 @@ export default function MembersPage() {
               </TouchableOpacity>
             </View>
 
+            {/* Search & Filter */}
+            <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f9fafb", borderRadius: 8, paddingHorizontal: 12, marginBottom: 12 }}>
+                <Search size={18} color="#6b7280" />
+                <TextInput
+                  style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 12, color: "#111827" }}
+                  placeholder="Cari nama, email, kamar..."
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <TouchableOpacity
+                  style={[styles.filterChip, selectedStatus === "all" && styles.filterChipActive]}
+                  onPress={() => setSelectedStatus("all")}
+                >
+                  <Text style={[styles.filterText, selectedStatus === "all" && styles.filterTextActive]}>
+                    Semua ({members.length})
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterChip, selectedStatus === "active" && styles.filterChipActive]}
+                  onPress={() => setSelectedStatus("active")}
+                >
+                  <Text style={[styles.filterText, selectedStatus === "active" && styles.filterTextActive]}>
+                    Aktif ({members.filter(m => m.status === "active").length})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.filterChip, selectedStatus === "inactive" && styles.filterChipActive]}
+                  onPress={() => setSelectedStatus("inactive")}
+                >
+                  <Text style={[styles.filterText, selectedStatus === "inactive" && styles.filterTextActive]}>
+                    Nonaktif ({members.filter(m => m.status === "inactive").length})
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+
             <View style={styles.cardContent}>
               <View style={styles.tableHeader}>
                 <Text style={[styles.headText, { flex: 2 }]}>Nama</Text>
-                <Text style={[styles.headText, { flex: 1, textAlign: 'center' }]}>Kamar</Text>
-                <Text style={[styles.headText, { flex: 1.5, textAlign: 'center' }]}>Kontak</Text>
-                <Text style={[styles.headText, { flex: 1, textAlign: 'center' }]}>Status</Text>
-                <Text style={[styles.headText, { flex: 1, textAlign: 'center' }]}>Edit</Text>
+                <Text style={[styles.headText, { flex: 1 }]}>Kamar</Text>
+                <Text style={[styles.headText, { flex: 1 }]}>Status</Text>
+                <Text style={[styles.headText, { flex: 1, textAlign: 'center' }]}>Aksi</Text>
               </View>
-              <View style={styles.separator} />
 
-              {loading ? (
-                  <ActivityIndicator style={{ margin: 20 }} color="#333" />
-              ) : members.length === 0 ? (
-                  <Text style={{ textAlign: 'center', color: '#999', margin: 20 }}>Belum ada member di Kost ini.</Text>
+              {filteredMembers.length === 0 ? (
+                <View style={{ padding: 40, alignItems: "center" }}>
+                  <Text style={{ color: "#6b7280", fontSize: 16 }}>
+                    {searchQuery ? "Tidak ada member ditemukan" : "Belum ada member"}
+                  </Text>
+                </View>
               ) : (
-                  <View style={{ gap: 8 }}>
-                    {members.map((m) => (
-                        <MemberRow key={m.id} member={m} onEdit={handleEdit} onDelete={handleDelete} />
-                    ))}
+                filteredMembers.map((member) => (
+                  <View key={member.id} style={styles.rowContainer}>
+                    <View style={{ flex: 2 }}>
+                      <Text style={[styles.rowText, { fontWeight: '600' }]} numberOfLines={1}>
+                        {member.name}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: "#6b7280" }} numberOfLines={1}>
+                        {member.email}
+                      </Text>
+                    </View>
+
+                    <View style={[styles.pillContainer, { flex: 1 }]}>
+                      <Text style={styles.pillText}>{member.room}</Text>
+                    </View>
+
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <View style={[
+                        styles.statusBadge, 
+                        { backgroundColor: getStatusColor(member.status || 'active') }
+                      ]}>
+                        <Text style={styles.statusText}>{member.status || 'active'}</Text>
+                      </View>
+                    </View>
+
+                    <View style={[styles.actionContainer, { flex: 1 }]}>
+                      <TouchableOpacity style={styles.iconBtn} onPress={() => handleEdit(member)}>
+                        <Pencil size={14} color="#2563eb" />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={styles.iconBtn} 
+                        onPress={() => handleDelete(member.id, member.name)}
+                      >
+                        <Trash2 size={14} color="#dc2626" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
+                ))
               )}
+
             </View>
           </View>
         </ScrollView>
@@ -303,9 +421,14 @@ const styles = StyleSheet.create({
   rowText: { fontSize: 13, color: "#1f2937" },
   pillContainer: { backgroundColor: "#e5e7eb", borderRadius: 10, paddingVertical: 4, paddingHorizontal: 8, marginHorizontal: 4, alignItems: 'center' },
   pillText: { fontSize: 11, color: "#374151", fontWeight: "500" },
-  statusText: { fontSize: 11, color: "#4b5563" },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  statusText: { fontSize: 11, color: "#fff", fontWeight: "600" },
   actionContainer: { flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 8 },
   iconBtn: { padding: 4, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 4 },
+  filterChip: { backgroundColor: "#f3f4f6", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8 },
+  filterChipActive: { backgroundColor: "#6366f1" },
+  filterText: { color: "#6b7280", fontSize: 13, fontWeight: "600" },
+  filterTextActive: { color: "#fff" },
   fabContainer: { position: "absolute", bottom: 24, left: 0, right: 0, alignItems: "center" },
   fabButton: { backgroundColor: "#1f2937", flexDirection: "row", alignItems: "center", paddingHorizontal: 32, height: 56, borderRadius: 28, elevation: 6 },
   fabText: { color: "#fff", fontSize: 16, fontWeight: "600" },
