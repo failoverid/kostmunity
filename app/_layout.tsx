@@ -10,9 +10,18 @@ export default function RootLayout() {
 
     return (
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <Stack>
-                {/* Halaman utama */}
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack screenOptions={{ headerShown: false }}>
+                {/* Home */}
+                <Stack.Screen name="index" />
+
+                {/* Tabs */}
+                <Stack.Screen name="(tabs)" />
+
+                {/* Auth Group */}
+                <Stack.Screen name="(auth)" />
+
+                {/* Dashboard */}
+                <Stack.Screen name="dashboard" />
 
                 {/* Modal */}
                 <Stack.Screen
@@ -20,14 +29,7 @@ export default function RootLayout() {
                     options={{
                         presentation: 'modal',
                         title: 'Modal',
-                    }}
-                />
-
-                {/* Onboarding (kalau ada) */}
-                <Stack.Screen
-                    name="onboarding"
-                    options={{
-                        headerShown: false,
+                        headerShown: true,
                     }}
                 />
 
