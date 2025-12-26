@@ -1,38 +1,37 @@
 import { useRouter } from "expo-router";
-import { ArrowRight, Edit3, Home, Upload, X, Search, Plus, Trash2 } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import { ArrowRight, Edit3, Home, Plus, Search, Trash2, Upload, X } from "lucide-react-native";
+import React, { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 
 // --- FIREBASE IMPORTS ---
-import { collection, addDoc } from 'firebase/firestore';
+import { addDoc, collection } from 'firebase/firestore';
 import { db } from '../../../../lib/firebase-clients';
 
 // --- IMPORT HOOKS & SERVICES BARU ---
-import { useTagihanList } from "../../../../hooks/useTagihan";
-import { deleteTagihan, updateTagihan } from "../../../../services/tagihanService";
-import { formatCurrency, formatDate, getStatusColor } from "../../../../lib/formatting";
 import { useAuth } from "../../../../contexts/AuthContext";
+import { useTagihanList } from "../../../../hooks/useTagihan";
+import { formatCurrency } from "../../../../lib/formatting";
 import type { Tagihan } from "../../../../models/Tagihan";
+import { deleteTagihan, updateTagihan } from "../../../../services/tagihanService";
 
 // ==========================================
-// HELPER FUNCTIONS (moved from lib for compatibility)
+// HELPER FUNCTIONS
 // ==========================================
-// Note: These duplicate lib/formatting.ts but kept for backwards compatibility
 const formatRupiah = (num: number): string => {
   const formatted = (num / 1000).toFixed(0);
   return `${formatted}K`;
@@ -43,15 +42,17 @@ const formatStatus = (status: string) => {
 };
 
 // ==========================================
-// 2. COMPONENT: ADD BILL MODAL (STYLE GAMBAR 2)
+// 2. COMPONENT: ADD BILL MODAL (DIPERBAIKI)
 // ==========================================
 
 interface AddBillModalProps {
   visible: boolean;
   onClose: () => void;
+  kostId: string;        // TAMBAHAN: Butuh ID Kost
+  onSuccess: () => void; // TAMBAHAN: Untuk refresh list setelah simpan
 }
 
-const AddBillModal = ({ visible, onClose }: AddBillModalProps) => {
+const AddBillModal = ({ visible, onClose, kostId, onSuccess }: AddBillModalProps) => {
   const [loading, setLoading] = useState(false);
   const [nama, setNama] = useState("");
   const [kamar, setKamar] = useState("");
@@ -75,10 +76,16 @@ const AddBillModal = ({ visible, onClose }: AddBillModalProps) => {
         dueDate: jatuhTempo,
         status: "Belum Lunas",
         createdAt: new Date(),
+        kostId: kostId, // PERBAIKAN UTAMA: Menyimpan ID Kost
       });
 
       Alert.alert("Sukses", "Tagihan berhasil ditambahkan");
+
+      // Reset Form
       setNama(""); setKamar(""); setJumlah(""); setJatuhTempo("");
+
+      // Refresh Data & Tutup Modal
+      onSuccess();
       onClose();
     } catch (error) {
       console.error("Error adding doc:", error);
@@ -96,7 +103,6 @@ const AddBillModal = ({ visible, onClose }: AddBillModalProps) => {
             {/* Header Modal */}
             <View style={modalStyles.headerRow}>
               <View style={modalStyles.logoContainer}>
-                {/* Pastikan Logo Ada */}
                 <Image source={require("../../../../assets/kostmunity-logo.png")} style={modalStyles.logoIcon} resizeMode="contain"/>
                 <View>
                   <Text style={modalStyles.logoTextMain}>kostmunity</Text>
@@ -115,7 +121,6 @@ const AddBillModal = ({ visible, onClose }: AddBillModalProps) => {
                 <TextInput style={modalStyles.input} placeholder="Total Tagihan (Rp)" placeholderTextColor="#A0A090" keyboardType="numeric" value={jumlah} onChangeText={setJumlah} />
                 <TextInput style={modalStyles.input} placeholder="Jatuh Tempo (ex: 25 Okt)" placeholderTextColor="#A0A090" value={jatuhTempo} onChangeText={setJatuhTempo} />
 
-                {/* Dummy Upload Area sesuai gambar */}
                 <TouchableOpacity style={modalStyles.uploadArea}>
                   <Upload size={24} color="#A0A090" />
                   <Text style={modalStyles.uploadText}>Upload Dokumen Pendukung (Opsional)</Text>
@@ -141,7 +146,7 @@ const AddBillModal = ({ visible, onClose }: AddBillModalProps) => {
 };
 
 // ==========================================
-// 3. COMPONENT: BILLING ROW (SESUAI GAMBAR 1)
+// 3. COMPONENT: BILLING ROW
 // ==========================================
 
 const StatusBadge = ({ status }: { status: string }) => {
@@ -163,29 +168,24 @@ const StatusBadge = ({ status }: { status: string }) => {
 
 const BillingRow = ({ item }: { item: Tagihan }) => (
     <View style={styles.rowContainer}>
-      {/* 1. Nama */}
       <Text style={[styles.rowText, { flex: 2 }]} numberOfLines={1}>{item.memberName}</Text>
 
-      {/* 2. Total (Bg Abu rounded di gambar) */}
       <View style={{ flex: 1.5, alignItems: 'center' }}>
         <View style={{ backgroundColor: '#f3f4f6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
           <Text style={{ fontSize: 13, color: '#374151', fontWeight: '600' }}>{formatCurrency(item.amount)}</Text>
         </View>
       </View>
 
-      {/* 3. Jatuh Tempo (Bg Abu rounded di gambar) */}
       <View style={{ flex: 1.5, alignItems: 'center' }}>
         <View style={{ backgroundColor: '#f3f4f6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
           <Text style={{ fontSize: 13, color: '#374151' }}>{item.dueDate}</Text>
         </View>
       </View>
 
-      {/* 4. Status */}
       <View style={{ flex: 1.5, alignItems: 'center' }}>
         <StatusBadge status={item.status} />
       </View>
 
-      {/* 5. Edit (Icon) */}
       <View style={{ flex: 0.8, alignItems: 'center' }}>
         <TouchableOpacity style={{ padding: 8 }}>
           <Edit3 size={14} color="#6b7280" />
@@ -201,12 +201,11 @@ const BillingRow = ({ item }: { item: Tagihan }) => (
 export default function BillingPage() {
   const router = useRouter();
   const { user } = useAuth();
-  
-  const kostId = user?.kostId || "kost_kurnia_01"; // Fallback for development
-  
-  // GUNAKAN HOOKS BARU
+
+  const kostId = user?.kostId || "kost_kurnia_01";
+
   const { tagihan: tagihanList, loading, error, refetch } = useTagihanList('kost', kostId);
-  
+
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
@@ -214,7 +213,7 @@ export default function BillingPage() {
   // Filter tagihan
   const filteredTagihan = tagihanList.filter((tagihan: Tagihan) => {
     const matchesSearch = (tagihan.memberName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         tagihan.room.toLowerCase().includes(searchQuery.toLowerCase());
+                          tagihan.room.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = selectedStatus === "all" || tagihan.status === selectedStatus;
     return matchesSearch && matchesStatus;
   });
@@ -252,7 +251,6 @@ export default function BillingPage() {
     );
   };
 
-  // Loading state
   if (loading) {
     return (
       <View style={[styles.safeArea, { justifyContent: "center", alignItems: "center" }]}>
@@ -262,14 +260,13 @@ export default function BillingPage() {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <View style={[styles.safeArea, { justifyContent: "center", alignItems: "center", padding: 20 }]}>
         <Text style={{ color: "#dc2626", fontSize: 16, textAlign: "center", marginBottom: 20 }}>
           Error: {error.message}
         </Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={{ backgroundColor: "#6366f1", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
           onPress={refetch}
         >
@@ -284,7 +281,6 @@ export default function BillingPage() {
         <StatusBar barStyle="dark-content" backgroundColor="#f3f4f6" />
         <ScrollView contentContainerStyle={styles.scrollContent}>
 
-          {/* Header App */}
           <View style={styles.header}>
             <Image source={require("../../../../assets/kostmunity-logo.png")} style={styles.logo} resizeMode="contain" />
             <Text style={styles.headerTitle}>Kostmunity</Text>
@@ -294,7 +290,6 @@ export default function BillingPage() {
             </View>
           </View>
 
-          {/* Card Tagihan */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <View>
@@ -309,7 +304,6 @@ export default function BillingPage() {
               </TouchableOpacity>
             </View>
 
-            {/* Search & Filter */}
             <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
               <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f9fafb", borderRadius: 8, paddingHorizontal: 12, marginBottom: 12 }}>
                 <Search size={18} color="#6b7280" />
@@ -322,44 +316,23 @@ export default function BillingPage() {
               </View>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <TouchableOpacity
-                  style={[styles.filterChip, selectedStatus === "all" && styles.filterChipActive]}
-                  onPress={() => setSelectedStatus("all")}
-                >
-                  <Text style={[styles.filterText, selectedStatus === "all" && styles.filterTextActive]}>
-                    Semua ({tagihanList.length})
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterChip, selectedStatus === "Lunas" && styles.filterChipActive]}
-                  onPress={() => setSelectedStatus("Lunas")}
-                >
-                  <Text style={[styles.filterText, selectedStatus === "Lunas" && styles.filterTextActive]}>
-                    Lunas ({tagihanList.filter((t: Tagihan) => t.status === "Lunas").length})
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterChip, selectedStatus === "Belum Lunas" && styles.filterChipActive]}
-                  onPress={() => setSelectedStatus("Belum Lunas")}
-                >
-                  <Text style={[styles.filterText, selectedStatus === "Belum Lunas" && styles.filterTextActive]}>
-                    Belum Bayar ({tagihanList.filter((t: Tagihan) => t.status === "Belum Lunas").length})
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterChip, selectedStatus === "Terlambat" && styles.filterChipActive]}
-                  onPress={() => setSelectedStatus("Terlambat")}
-                >
-                  <Text style={[styles.filterText, selectedStatus === "Terlambat" && styles.filterTextActive]}>
-                    Terlambat ({tagihanList.filter((t: Tagihan) => t.status === "Terlambat").length})
-                  </Text>
-                </TouchableOpacity>
+                {["all", "Lunas", "Belum Lunas", "Terlambat"].map((status) => (
+                    <TouchableOpacity
+                        key={status}
+                        style={[styles.filterChip, selectedStatus === status && styles.filterChipActive]}
+                        onPress={() => setSelectedStatus(status)}
+                    >
+                      <Text style={[styles.filterText, selectedStatus === status && styles.filterTextActive]}>
+                        {status === "all" ? `Semua (${tagihanList.length})` :
+                         status === "Belum Lunas" ? `Belum Bayar (${tagihanList.filter((t: Tagihan) => t.status === "Belum Lunas").length})` :
+                         `${status} (${tagihanList.filter((t: Tagihan) => t.status === status).length})`}
+                      </Text>
+                    </TouchableOpacity>
+                ))}
               </ScrollView>
             </View>
 
-            {/* Table Content */}
             <View style={styles.cardContent}>
-              {/* Table Header */}
               <View style={styles.tableHeader}>
                 <Text style={[styles.tableHeadText, { flex: 2 }]}>Nama</Text>
                 <Text style={[styles.tableHeadText, { flex: 1.5, textAlign: 'center' }]}>Kamar</Text>
@@ -371,7 +344,6 @@ export default function BillingPage() {
 
               <View style={styles.separator} />
 
-              {/* List Data */}
               {filteredTagihan.length === 0 ? (
                   <View style={{ padding: 40, alignItems: "center" }}>
                     <Text style={{ color: "#6b7280", fontSize: 16 }}>
@@ -411,14 +383,14 @@ export default function BillingPage() {
 
                       <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 4 }}>
                         {item.status === "Belum Lunas" && (
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={[styles.iconBtn, { backgroundColor: '#dcfce7' }]}
                             onPress={() => handleUpdateStatus(item.id, "Lunas")}
                           >
                             <Text style={{ fontSize: 12, color: "#059669", fontWeight: "700" }}>✓</Text>
                           </TouchableOpacity>
                         )}
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={[styles.iconBtn, { backgroundColor: '#fee2e2' }]}
                           onPress={() => handleDeleteTagihan(item.id, item.memberName)}
                         >
@@ -432,7 +404,6 @@ export default function BillingPage() {
           </View>
         </ScrollView>
 
-        {/* FAB Home */}
         <View style={styles.fabContainer}>
           <TouchableOpacity style={styles.fabButton} onPress={() => router.replace("/dashboard/admin")}>
             <Home size={20} color="#fff" style={{ marginRight: 8 }} />
@@ -440,8 +411,12 @@ export default function BillingPage() {
           </TouchableOpacity>
         </View>
 
-        {/* Modal */}
-        <AddBillModal visible={modalVisible} onClose={() => setModalVisible(false)} />
+        <AddBillModal
+            visible={modalVisible}
+            onClose={() => setModalVisible(false)}
+            kostId={kostId}        // Kirim ID Kost
+            onSuccess={refetch}    // Kirim fungsi refresh
+        />
       </SafeAreaView>
   );
 }
@@ -453,60 +428,40 @@ export default function BillingPage() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#f3f4f6" },
   scrollContent: { padding: 16, paddingBottom: 100 },
-
-  // Header App
   header: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingTop: 16, paddingBottom: 24, gap: 8 },
   logo: { width: 30, height: 35 },
   headerTitle: { fontSize: 24, fontWeight: "bold", color: "#1f2937" },
   headerSubtitleTop: { fontSize: 10, color: "#6b7280", lineHeight: 10 },
   headerSubtitleBottom: { fontSize: 10, fontWeight: "bold", color: "#1f2937", lineHeight: 12 },
-
-  // Card
   card: { backgroundColor: "#fff", borderRadius: 16, padding: 20, elevation: 2, shadowColor: "#000", shadowOpacity: 0.05 },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
   cardTitle: { fontSize: 22, fontWeight: "bold", color: "#333", lineHeight: 26 },
   cardSubtitle: { fontSize: 14, color: "#666", marginTop: 4 },
-
-  // Tombol Tambah
   addButton: { backgroundColor: "#333", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, flexDirection: "row", alignItems: "center" },
   addButtonText: { color: "#fff", fontSize: 12, fontWeight: "600" },
-
-  // Filter Chips
   filterChip: { backgroundColor: "#f3f4f6", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8 },
   filterChipActive: { backgroundColor: "#6366f1" },
   filterText: { color: "#6b7280", fontSize: 13, fontWeight: "600" },
   filterTextActive: { color: "#fff" },
-
-  // Table
   cardContent: {},
   tableHeader: { flexDirection: "row", alignItems: "center", paddingBottom: 12 },
   tableHeadText: { fontSize: 12, fontWeight: "bold", color: "#333" },
   separator: { height: 1, backgroundColor: "#000", marginBottom: 12 },
-
-  // Row
   rowContainer: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
   rowText: { fontSize: 13, color: "#333", fontWeight: "500" },
-
-  // Pills
   pillContainer: { backgroundColor: "#e5e7eb", paddingVertical: 4, paddingHorizontal: 12, borderRadius: 10 },
   pillText: { fontSize: 11, color: "#374151", fontWeight: "500" },
-  
-  // Status Badge
   statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   statusText: { fontSize: 11, color: "#fff", fontWeight: "600" },
-
   iconBtn: { padding: 6, borderRadius: 4 },
-
-  // FAB
   fabContainer: { position: "absolute", bottom: 24, left: 0, right: 0, alignItems: "center" },
   fabButton: { backgroundColor: "#333", flexDirection: "row", alignItems: "center", paddingHorizontal: 24, height: 48, borderRadius: 24, elevation: 5 },
   fabText: { color: "#fff", fontSize: 14, fontWeight: "600" },
 });
 
-// Styles Khusus Modal (Cream Theme)
 const modalStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 },
-  modalContainer: { width: "100%", backgroundColor: "#FEFCE8", borderRadius: 24, padding: 24, maxHeight: "85%", elevation: 10 }, // Warna Cream
+  modalContainer: { width: "100%", backgroundColor: "#FEFCE8", borderRadius: 24, padding: 24, maxHeight: "85%", elevation: 10 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 },
   logoContainer: { flexDirection: "row", alignItems: "center", gap: 8 },
   logoIcon: { width: 32, height: 32 },
