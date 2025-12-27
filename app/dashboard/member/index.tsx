@@ -1,35 +1,32 @@
-import React, { useState, useEffect } from "react";
+import FloatingNavbar from "@/components/FloatingNavbar";
+import { useRouter } from "expo-router";
+import { doc, onSnapshot } from "firebase/firestore";
 import {
-    View,
-    Text,
-    StyleSheet,
-    ScrollView,
-    Image,
-    TouchableOpacity,
-    SafeAreaView,
-    StatusBar,
-    Platform,
-    ActivityIndicator
-} from "react-native";
-import {
-    MapPin,
-    HeartHandshake,
-    FileSearch,
-    MessageSquarePlus,
+    AlertCircle,
     ArrowRight,
     CreditCard,
-    AlertCircle
+    FileSearch,
+    HeartHandshake,
+    MapPin,
+    MessageSquarePlus
 } from "lucide-react-native";
-import { useRouter } from "expo-router";
-import FloatingNavbar from "@/components/FloatingNavbar";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../../../lib/firebase-clients";
-import { useTagihanList } from "../../../hooks/useTagihan";
-import { formatCurrency } from "../../../lib/formatting";
+import React, { useEffect, useState } from "react";
+import {
+    ActivityIndicator,
+    Image,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from "react-native";
 import { useAuth } from "../../../contexts/AuthContext";
-
-// TODO: Get from Auth Context
-// const CURRENT_MEMBER_ID = "member_001"; // DEPRECATED - using Auth Context now
+import { useTagihanList } from "../../../hooks/useTagihan";
+import { db } from "../../../lib/firebase-clients";
+import { formatCurrency } from "../../../lib/formatting";
 
 const COLORS = {
     background: "#181A20",
@@ -43,10 +40,10 @@ const COLORS = {
 };
 
 const FeatureCard = ({
-                         title,
-                         icon,
-                         onPress
-                     }: {
+    title,
+    icon,
+    onPress
+}: {
     title: string;
     icon: React.ReactNode;
     onPress: () => void;
@@ -67,12 +64,12 @@ const FeatureCard = ({
 export default function MemberDashboard() {
     const router = useRouter();
     const { user } = useAuth();
-    
+
     const memberId = user?.memberId || user?.uid || "member_001"; // Fallback for development
-    
+
     const [memberData, setMemberData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    
+
     // Fetch tagihan data
     const { tagihan: tagihanList, loading: loadingTagihan } = useTagihanList('member', memberId);
 

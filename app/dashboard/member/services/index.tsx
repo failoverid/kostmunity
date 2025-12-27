@@ -1,8 +1,8 @@
-import React from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, StatusBar, Platform, Image } from "react-native";
-import { ArrowRight, HeartHandshake, FileSearch, MessageSquarePlus } from "lucide-react-native";
-import { useRouter } from "expo-router";
 import FloatingNavbar from "@/components/FloatingNavbar";
+import { useRouter } from "expo-router";
+import { ArrowRight, FileSearch, HeartHandshake, MessageSquarePlus } from "lucide-react-native";
+import React from "react";
+import { Image, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 const COLORS = {
     background: "#181A20",
@@ -48,16 +48,79 @@ export default function ServicesPage() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background },
-    scrollContent: { padding: 20, paddingTop: Platform.OS === 'android' ? 40 : 20 },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 40, gap: 8 },
-    logoSmall: { width: 24, height: 24 },
-    headerTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textWhite },
-    instructionText: { textAlign: 'center', color: '#666', fontSize: 14, marginBottom: 24 },
-    cardsContainer: { gap: 20 },
-    serviceCard: { backgroundColor: COLORS.purple, borderRadius: 20, height: 100, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
-    iconContainer: { width: 50, alignItems: 'flex-start' },
-    textContainer: { flex: 1, paddingHorizontal: 10 },
-    serviceTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textWhite, lineHeight: 24 },
-    arrowContainer: { width: 40, alignItems: 'flex-end' },
+    container: {
+        flex: 1,
+        backgroundColor: COLORS.background,
+    },
+
+    scrollContent: {
+        padding: 20,
+        paddingTop: Platform.OS === 'android' ? 40 : 20,
+    },
+
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 40,
+        gap: 8,
+    },
+
+    logoSmall: {
+        width: 24,
+        height: 24,
+    },
+
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: COLORS.textWhite,
+    },
+
+    instructionText: {
+        textAlign: 'center',
+        color: '#666',
+        fontSize: 14,
+        marginBottom: 24,
+    },
+
+    cardsContainer: {
+        gap: 20,
+    },
+
+    serviceCard: {
+        backgroundColor: COLORS.purple,
+        borderRadius: 20,
+        height: 100,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 24,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+
+    iconContainer: {
+        width: 50,
+        alignItems: 'flex-start',
+    },
+
+    textContainer: {
+        flex: 1,
+        paddingHorizontal: 10,
+    },
+
+    serviceTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: COLORS.textWhite,
+        lineHeight: 24,
+    },
+
+    arrowContainer: {
+        width: 40,
+        alignItems: 'flex-end',
+    },
 });

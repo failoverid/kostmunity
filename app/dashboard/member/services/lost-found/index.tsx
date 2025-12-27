@@ -1,23 +1,10 @@
-import React, { useState } from "react";
-import {
-    View,
-    Text,
-    StyleSheet,
-    ScrollView,
-    Image,
-    TouchableOpacity,
-    SafeAreaView,
-    StatusBar,
-    Platform,
-    Modal
-} from "react-native";
-import {
-    ArrowLeft,
-    ArrowRight,
-    X
-} from "lucide-react-native";
-import { useRouter } from "expo-router";
 import FloatingNavbar from "@/components/FloatingNavbar";
+import { useRouter } from "expo-router";
+import { ArrowLeft, ArrowRight, X } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Image, Modal, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../../../../contexts/AuthContext";
+import { getLostItemsByKostId, LostItem } from "../../../../../services/lostFoundService";
 
 const COLORS = {
     background: "#181A20",
@@ -32,32 +19,49 @@ const COLORS = {
     cyanText: "#5CE1E6",
 };
 
-const ITEMS = [
-    {
-        id: 1,
-        name: "Air Jordan 4 Retro SB Pine Green",
-        status: "Kehilangan",
-        location: "Depan Pintu Kamar X",
-        contact: "0812-3456-7890",
-        image: "https://images.stockx.com/images/Air-Jordan-4-Retro-SB-Pine-Green-Product.jpg?fit=fill&bg=FFFFFF&w=700&h=500&fm=webp&auto=compress&q=90&dpr=2&trim=color&updated_at=1678862862"
-    },
-    {
-        id: 2,
-        name: "Eiger Flecken Landscape Wallet",
-        status: "Ditemukan",
-        location: "Lobby Utama",
-        contact: "0821-1122-3344",
-        image: "https://eigeradventure.com/media/catalog/product/cache/a3809cbba0df796b4bf28882dfde5b27/9/1/910005697001_1.jpg"
-    },
-];
-
 export default function LostFoundPage() {
     const router = useRouter();
+    const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<"Semua" | "Ditemukan" | "Kehilangan">("Semua");
-    const [selectedItem, setSelectedItem] = useState<any>(null);
+    const [selectedItem, setSelectedItem] = useState<LostItem | null>(null);
+    const [items, setItems] = useState<LostItem[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    const filteredItems = activeTab === "Semua" ? ITEMS : ITEMS.filter(item => item.status === activeTab);
+    useEffect(() => {
+        const fetchItems = async () => {
+            // PERBAIKAN: Tangani jika kostId tidak ada
+            if (!user?.kostId) {
+                setLoading(false);
+                return;
+            }
+            try {
+                const data = await getLostItemsByKostId(user.kostId);
+                setItems(data);
+            } catch (error) {
+                console.error(error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchItems();
+    }, [user?.kostId]);
 
+    const filteredItems = items.filter(item => {
+        if (activeTab === "Semua") return true;
+        if (activeTab === "Ditemukan") return item.status === 'found';
+        if (activeTab === "Kehilangan") return item.status === 'lost';
+        return true;
+    });
+
+    if (loading) {
+        return (
+            <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <ActivityIndicator size="large" color={COLORS.lime} />
+            </SafeAreaView>
+        );
+    }
+
+    // ... (Sisa return JSX dan Styles sama) ...
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
@@ -120,33 +124,43 @@ export default function LostFoundPage() {
                 </View>
 
                 <View style={styles.gridContainer}>
-                    {filteredItems.map((item) => (
-                        <View key={item.id} style={styles.card}>
-                            <View style={styles.imageContainer}>
-                                <Image
-                                    source={{ uri: item.image }}
-                                    style={styles.itemImage}
-                                    resizeMode="cover"
-                                />
-                            </View>
-                            <View style={styles.cardContent}>
-                                <View style={styles.badgeContainer}>
-                                    <View style={styles.badge}>
-                                        <Text style={styles.badgeText}>{item.status}</Text>
-                                    </View>
+                    {filteredItems.length === 0 ? (
+                        <Text style={{ color: '#666', textAlign: 'center', marginTop: 20, width: '100%' }}>Belum ada item.</Text>
+                    ) : (
+                        filteredItems.map((item) => (
+                            <View key={item.id} style={styles.card}>
+                                <View style={styles.imageContainer}>
+                                    {item.imageUrl ? (
+                                        <Image
+                                            source={{ uri: item.imageUrl }}
+                                            style={styles.itemImage}
+                                            resizeMode="cover"
+                                        />
+                                    ) : (
+                                        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                                            <Text style={{ fontSize: 10, color: '#999' }}>No Image</Text>
+                                        </View>
+                                    )}
                                 </View>
-                                <Text style={styles.itemName} numberOfLines={2}>
-                                    {item.name}
-                                </Text>
-                                <TouchableOpacity
-                                    style={styles.detailButton}
-                                    onPress={() => setSelectedItem(item)}
-                                >
-                                    <Text style={styles.detailButtonText}>Cek Detail</Text>
-                                </TouchableOpacity>
+                                <View style={styles.cardContent}>
+                                    <View style={styles.badgeContainer}>
+                                        <View style={[styles.badge, { backgroundColor: item.status === 'found' ? COLORS.lime : '#ff4444' }]}>
+                                            <Text style={styles.badgeText}>{item.status === 'found' ? 'Ditemukan' : 'Kehilangan'}</Text>
+                                        </View>
+                                    </View>
+                                    <Text style={styles.itemName} numberOfLines={2}>
+                                        {item.itemName}
+                                    </Text>
+                                    <TouchableOpacity
+                                        style={styles.detailButton}
+                                        onPress={() => setSelectedItem(item)}
+                                    >
+                                        <Text style={styles.detailButtonText}>Cek Detail</Text>
+                                    </TouchableOpacity>
+                                </View>
                             </View>
-                        </View>
-                    ))}
+                        ))
+                    )}
                 </View>
                 <View style={{ height: 100 }} />
             </ScrollView>
@@ -168,29 +182,34 @@ export default function LostFoundPage() {
                             </TouchableOpacity>
 
                             <View style={styles.modalImageContainer}>
-                                <Image
-                                    source={{ uri: selectedItem.image }}
-                                    style={styles.modalImage}
-                                    resizeMode="contain"
-                                />
+                                {selectedItem.imageUrl ? (
+                                    <Image
+                                        source={{ uri: selectedItem.imageUrl }}
+                                        style={styles.modalImage}
+                                        resizeMode="contain"
+                                    />
+                                ) : (
+                                    <Text>No Image</Text>
+                                )}
                             </View>
 
                             <View style={styles.modalBadgeContainer}>
-                                <View style={styles.badge}>
-                                    <Text style={styles.badgeText}>{selectedItem.status}</Text>
+                                <View style={[styles.badge, { backgroundColor: selectedItem.status === 'found' ? COLORS.lime : '#ff4444' }]}>
+                                    <Text style={styles.badgeText}>{selectedItem.status === 'found' ? 'Ditemukan' : 'Kehilangan'}</Text>
                                 </View>
                             </View>
 
                             <Text style={styles.modalTitle} numberOfLines={2}>
-                                {selectedItem.name}
+                                {selectedItem.itemName}
                             </Text>
                             <Text style={styles.modalLabel}>Tempat Terakhir Barang</Text>
                             <Text style={styles.modalValue}>
                                 {selectedItem.location}
                             </Text>
-                            <TouchableOpacity style={styles.contactButton}>
-                                <Text style={styles.contactButtonText}>Hubungi Kontak</Text>
-                            </TouchableOpacity>
+                            <Text style={styles.modalLabel}>Kontak</Text>
+                            <Text style={[styles.modalValue, { fontSize: 14, color: COLORS.textWhite }]}>
+                                {selectedItem.contactInfo}
+                            </Text>
                         </View>
                     )}
                 </View>
@@ -239,8 +258,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center'
     },
-
-    // Updated Tab Style
     tabContainer: {
         flexDirection: 'row',
         justifyContent: 'center',
