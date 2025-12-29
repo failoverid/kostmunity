@@ -161,14 +161,55 @@ export async function updateMember(memberId: string, memberData: MemberInfoUpdat
 }
 
 /**
- * Delete member
+ * Delete member - deletes both memberInfo and associated user account
  */
 export async function deleteMember(memberId: string): Promise<void> {
   try {
+    console.log('Starting deleteMember for ID:', memberId);
+    
+    // Get member data first to find associated email
+    const memberDoc = await getDoc(doc(db, COLLECTION_NAME, memberId));
+    if (!memberDoc.exists()) {
+      console.error('Member not found with ID:', memberId);
+      throw new Error('Member tidak ditemukan');
+    }
+    
+    const memberData = memberDoc.data() as MemberInfo;
+    console.log('Member data:', memberData);
+    
+    // Try to delete user document from users collection by email
+    // Query users collection to find user with this email
+    try {
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('email', '==', memberData.email)
+      );
+      const usersSnapshot = await getDocs(usersQuery);
+      
+      console.log('Found users to delete:', usersSnapshot.docs.length);
+      
+      // Delete all matching user documents (should be just one)
+      const deletePromises = usersSnapshot.docs.map(userDoc => {
+        console.log('Deleting user doc ID:', userDoc.id);
+        return deleteDoc(doc(db, 'users', userDoc.id));
+      });
+      await Promise.all(deletePromises);
+      console.log('User documents deleted');
+    } catch (userError) {
+      console.warn('Could not delete user account:', userError);
+      // Continue with member deletion even if user deletion fails
+    }
+    
+    // Delete from memberInfo collection
+    console.log('Deleting memberInfo document...');
     await deleteDoc(doc(db, COLLECTION_NAME, memberId));
-  } catch (error) {
+    console.log('MemberInfo document deleted successfully');
+    
+    // Note: Firebase Auth account deletion requires Admin SDK (server-side)
+    // For now, the user document in Firestore is deleted which prevents login
+  } catch (error: any) {
     console.error('Error deleting member:', error);
-    throw error;
+    throw new Error(error?.message || 'Gagal menghapus member');
   }
 }
 

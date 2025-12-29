@@ -6,6 +6,7 @@ import {
     Alert,
     Image,
     Modal,
+    Platform,
     SafeAreaView,
     ScrollView,
     StatusBar,
@@ -215,49 +216,79 @@ export default function MembersPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    Alert.alert("Hapus Member", `Yakin ingin menghapus ${name}? User ini tidak akan bisa login lagi.`, [
-      { text: "Batal", style: "cancel" },
-      { 
-        text: "Hapus", 
-        style: "destructive", 
-        onPress: async () => {
-          try {
-            await deleteMemberService(id);
-            Alert.alert("Berhasil", "Member berhasil dihapus");
-            refetch(); // Refresh data
-          } catch (error) {
-            console.error('Delete error:', error);
-            Alert.alert("Error", "Gagal menghapus member");
-          }
-        }
+    const confirmDelete = Platform.OS === 'web' 
+      ? window.confirm(`Yakin ingin menghapus ${name}? User ini tidak akan bisa login lagi.`)
+      : await new Promise((resolve) => {
+          Alert.alert(
+            "Hapus Member", 
+            `Yakin ingin menghapus ${name}? User ini tidak akan bisa login lagi.`, 
+            [
+              { text: "Batal", style: "cancel", onPress: () => resolve(false) },
+              { text: "Hapus", style: "destructive", onPress: () => resolve(true) }
+            ]
+          );
+        });
+
+    if (!confirmDelete) return;
+
+    try {
+      console.log('Deleting member with ID:', id);
+      await deleteMemberService(id);
+      console.log('Member deleted successfully');
+      
+      if (Platform.OS === 'web') {
+        alert('Member berhasil dihapus');
+      } else {
+        Alert.alert("Berhasil", "Member berhasil dihapus");
       }
-    ]);
+      refetch();
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      const errorMessage = error?.message || 'Terjadi kesalahan saat menghapus member';
+      if (Platform.OS === 'web') {
+        alert('Error: ' + errorMessage);
+      } else {
+        Alert.alert("Error", errorMessage);
+      }
+    }
   };
 
   const handleToggleStatus = async (member: MemberInfo) => {
     const newStatus = member.status === 'active' ? 'inactive' : 'active';
     const statusText = newStatus === 'active' ? 'mengaktifkan' : 'menonaktifkan';
     
-    Alert.alert(
-      "Ubah Status Member", 
-      `Yakin ingin ${statusText} ${member.name}?`, 
-      [
-        { text: "Batal", style: "cancel" },
-        { 
-          text: "Ya", 
-          onPress: async () => {
-            try {
-              await updateMember(member.id, { status: newStatus });
-              Alert.alert("Berhasil", `Member berhasil ${statusText === 'mengaktifkan' ? 'diaktifkan' : 'dinonaktifkan'}`);
-              refetch();
-            } catch (error) {
-              console.error('Update status error:', error);
-              Alert.alert("Error", "Gagal mengubah status");
-            }
-          }
-        }
-      ]
-    );
+    const confirmToggle = Platform.OS === 'web'
+      ? window.confirm(`Yakin ingin ${statusText} ${member.name}?`)
+      : await new Promise((resolve) => {
+          Alert.alert(
+            "Ubah Status Member", 
+            `Yakin ingin ${statusText} ${member.name}?`, 
+            [
+              { text: "Batal", style: "cancel", onPress: () => resolve(false) },
+              { text: "Ya", onPress: () => resolve(true) }
+            ]
+          );
+        });
+
+    if (!confirmToggle) return;
+
+    try {
+      await updateMember(member.id, { status: newStatus });
+      
+      if (Platform.OS === 'web') {
+        alert(`Member berhasil ${statusText === 'mengaktifkan' ? 'diaktifkan' : 'dinonaktifkan'}`);
+      } else {
+        Alert.alert("Berhasil", `Member berhasil ${statusText === 'mengaktifkan' ? 'diaktifkan' : 'dinonaktifkan'}`);
+      }
+      refetch();
+    } catch (error) {
+      console.error('Update status error:', error);
+      if (Platform.OS === 'web') {
+        alert('Error: Gagal mengubah status');
+      } else {
+        Alert.alert("Error", "Gagal mengubah status");
+      }
+    }
   };
 
   // Loading state
@@ -414,7 +445,10 @@ export default function MembersPage() {
                       </TouchableOpacity>
                       <TouchableOpacity 
                         style={styles.iconBtn} 
-                        onPress={() => handleDelete(member.id, member.name)}
+                        onPress={() => {
+                          console.log('Delete button pressed for:', member.id, member.name);
+                          handleDelete(member.id, member.name);
+                        }}
                       >
                         <Trash2 size={14} color="#dc2626" />
                       </TouchableOpacity>
