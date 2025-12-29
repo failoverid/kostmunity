@@ -1,6 +1,5 @@
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from "expo-router";
-import { AlertTriangle, ArrowRight, Home, Image as ImageIcon, Upload, X } from "lucide-react-native";
+import { AlertTriangle, ArrowRight, Home, X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
@@ -19,7 +18,7 @@ import {
 } from "react-native";
 
 // --- FIREBASE & AUTH IMPORTS ---
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { useAuth } from "../../../../contexts/AuthContext";
 import { db } from "../../../../lib/firebase-clients";
 import {
