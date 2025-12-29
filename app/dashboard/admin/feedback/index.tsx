@@ -18,74 +18,20 @@ import {
     View
 } from "react-native";
 
-// --- FIREBASE IMPORTS ---
-import { addDoc, collection, doc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
-import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
+// --- FIREBASE & AUTH IMPORTS ---
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { useAuth } from "../../../../contexts/AuthContext";
 import { db } from "../../../../lib/firebase-clients";
+import {
+    createFeedback,
+    Feedback,
+    getFeedbackByKostId,
+    updateFeedback
+} from "../../../../services/feedbackService";
 
 // ==========================================
-// 1. INTERFACE & DATABASE LOGIC
+// 1. HELPER FUNCTIONS
 // ==========================================
-
-export interface FeedbackDB {
-  id: string;
-  memberId: string;
-  message: string;
-  imageUrl?: string;
-  createdAt: any;
-  status: 'Baru' | 'Diproses' | 'Selesai';
-  priority: 'Umum' | 'Penting' | 'Darurat';
-  adminResponse?: string;
-}
-
-// Fungsi Update Status/Tanggapan
-const updateFeedbackStatus = async (id: string, data: Partial<FeedbackDB>) => {
-  try {
-    const docRef = doc(db, "feedback", id);
-    await updateDoc(docRef, data);
-  } catch (error) {
-    console.error("Error updating feedback:", error);
-    throw error;
-  }
-};
-
-// Fungsi Buat Feedback Baru
-const createFeedback = async (
-  memberId: string,
-  message: string,
-  priority: 'Umum' | 'Penting' | 'Darurat',
-  fileUri?: string
-) => {
-  let imageUrl = null;
-
-  // Upload Image jika ada
-  if (fileUri) {
-    try {
-      const storage = getStorage();
-      const filename = `${Date.now()}_feedback.jpg`;
-      const storageRef = ref(storage, `feedback/${filename}`);
-
-      const response = await fetch(fileUri);
-      const blob = await response.blob();
-
-      await uploadBytes(storageRef, blob);
-      imageUrl = await getDownloadURL(storageRef);
-    } catch (err: any) {
-      console.warn("Gagal upload gambar feedback:", err);
-      throw new Error("Gagal upload gambar. Pastikan Storage aktif.");
-    }
-  }
-
-  await addDoc(collection(db, "feedback"), {
-    memberId,
-    message,
-    priority,
-    imageUrl,
-    status: 'Baru',
-    createdAt: new Date(),
-    adminResponse: ""
-  });
-};
 
 // Helper: Format Tanggal
 const formatDate = (timestamp: any) => {
@@ -97,40 +43,47 @@ const formatDate = (timestamp: any) => {
 };
 
 // ==========================================
-// 2. COMPONENT: ADD FEEDBACK MODAL (Cream Theme)
+// 2. COMPONENT: ADD FEEDBACK MODAL
 // ==========================================
 interface AddModalProps {
   visible: boolean;
   onClose: () => void;
+  onSuccess: () => void;
+  kostId: string;
+  userId: string;
+  userName: string;
 }
 
-const AddFeedbackModal = ({ visible, onClose }: AddModalProps) => {
+const AddFeedbackModal = ({ visible, onClose, onSuccess, kostId, userId, userName }: AddModalProps) => {
   const [loading, setLoading] = useState(false);
-  const [nama, setNama] = useState(""); // Idealnya otomatis dari Auth user
-  const [pesan, setPesan] = useState("");
-  const [priority, setPriority] = useState<'Umum' | 'Penting' | 'Darurat'>('Umum');
-  const [imageUri, setImageUri] = useState<string | null>(null);
-
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-    if (!result.canceled) setImageUri(result.assets[0].uri);
-  };
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [category, setCategory] = useState<'complaint' | 'suggestion' | 'praise'>('complaint');
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [nama, setNama] = useState(userName || "");
 
   const handleSubmit = async () => {
-    if (!nama || !pesan) {
-      Alert.alert("Mohon Lengkapi", "Nama dan Pesan wajib diisi.");
+    if (!subject || !message) {
+      Alert.alert("Mohon Lengkapi", "Judul dan pesan wajib diisi.");
       return;
     }
     setLoading(true);
     try {
-      await createFeedback(nama, pesan, priority, imageUri || undefined);
+      await createFeedback({
+        kostId,
+        memberId: userId,
+        memberName: nama || userName,
+        category,
+        subject,
+        message,
+        priority
+      });
       Alert.alert("Berhasil", "Laporan Anda telah dikirim.");
-      setNama(""); setPesan(""); setImageUri(null); setPriority("Umum");
+      setSubject("");
+      setMessage("");
+      setCategory('complaint');
+      setPriority('medium');
+      onSuccess();
       onClose();
     } catch (error: any) {
       Alert.alert("Gagal", error.message || "Terjadi kesalahan.");
@@ -153,20 +106,44 @@ const AddFeedbackModal = ({ visible, onClose }: AddModalProps) => {
 
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={addModalStyles.formGroup}>
-              <TextInput style={addModalStyles.input} placeholder="Nama Pelapor" placeholderTextColor="#A0A090" value={nama} onChangeText={setNama} />
+              <TextInput 
+                style={addModalStyles.input} 
+                placeholder="Nama Pelapor" 
+                placeholderTextColor="#A0A090" 
+                value={nama} 
+                onChangeText={setNama} 
+              />
+
+              <TextInput 
+                style={addModalStyles.input} 
+                placeholder="Kategori (contoh: kebersihan, keamanan, dll)" 
+                placeholderTextColor="#A0A090" 
+                value={category} 
+                onChangeText={setCategory} 
+              />
+
+              <TextInput 
+                style={addModalStyles.input} 
+                placeholder="Judul Laporan" 
+                placeholderTextColor="#A0A090" 
+                value={subject} 
+                onChangeText={setSubject} 
+              />
 
               {/* Priority Selector */}
               <View style={{flexDirection:'row', gap: 8, marginVertical: 4}}>
-                {(['Umum', 'Penting', 'Darurat'] as const).map(p => (
+                {(['low', 'medium', 'high'] as const).map(p => (
                   <TouchableOpacity
                     key={p}
                     style={[
                       addModalStyles.prioBadge,
-                      priority === p && { backgroundColor: p === 'Darurat' ? '#ef4444' : p === 'Penting' ? '#f97316' : '#3b82f6', borderColor: 'transparent' }
+                      priority === p && { backgroundColor: p === 'high' ? '#ef4444' : p === 'medium' ? '#f97316' : '#3b82f6', borderColor: 'transparent' }
                     ]}
                     onPress={() => setPriority(p)}
                   >
-                    <Text style={[addModalStyles.prioText, priority === p && {color:'#fff'}]}>{p}</Text>
+                    <Text style={[addModalStyles.prioText, priority === p && {color:'#fff'}]}>
+                      {p === 'low' ? 'Rendah' : p === 'medium' ? 'Sedang' : 'Tinggi'}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -177,28 +154,17 @@ const AddFeedbackModal = ({ visible, onClose }: AddModalProps) => {
                 placeholderTextColor="#A0A090"
                 multiline
                 numberOfLines={4}
-                value={pesan}
-                onChangeText={setPesan}
+                value={message}
+                onChangeText={setMessage}
               />
-
-              <TouchableOpacity style={addModalStyles.uploadArea} onPress={pickImage}>
-                {imageUri ? (
-                  <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%', borderRadius: 12 }} resizeMode="cover" />
-                ) : (
-                  <>
-                    <Upload size={24} color="#A0A090" />
-                    <Text style={addModalStyles.uploadText}>Upload Foto Bukti (Opsional)</Text>
-                  </>
-                )}
-              </TouchableOpacity>
             </View>
           </ScrollView>
 
           <TouchableOpacity style={addModalStyles.submitBtn} onPress={handleSubmit} disabled={loading}>
             {loading ? <ActivityIndicator color="#fff"/> : (
               <>
-                 <Text style={addModalStyles.submitText}>Kirim Laporan</Text>
-                 <ArrowRight size={16} color="#fff"/>
+                <Text style={addModalStyles.submitText}>Kirim Laporan</Text>
+                <ArrowRight size={14} color="#fff"/>
               </>
             )}
           </TouchableOpacity>
@@ -214,18 +180,18 @@ const AddFeedbackModal = ({ visible, onClose }: AddModalProps) => {
 interface ResponseModalProps {
   visible: boolean;
   onClose: () => void;
-  item: FeedbackDB | null;
+  item: Feedback | null;
 }
 
 const ResponseModal = ({ visible, onClose, item }: ResponseModalProps) => {
   const [response, setResponse] = useState("");
-  const [priority, setPriority] = useState<'Umum' | 'Penting' | 'Darurat'>('Umum');
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('low');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (item) {
-      setPriority(item.priority || 'Umum');
-      setResponse(item.adminResponse || "");
+      setPriority(item.priority || 'low');
+      setResponse(item.response || "");
     }
   }, [item]);
 
@@ -233,10 +199,10 @@ const ResponseModal = ({ visible, onClose, item }: ResponseModalProps) => {
     if (!item) return;
     setLoading(true);
     try {
-      await updateFeedbackStatus(item.id, {
-        adminResponse: response,
+      await updateFeedback(item.id!, {
+        response: response,
         priority: priority,
-        status: 'Diproses'
+        status: 'in_progress'
       });
       Alert.alert("Berhasil", "Tanggapan telah dikirim ke penghuni.");
       onClose();
@@ -258,13 +224,15 @@ const ResponseModal = ({ visible, onClose, item }: ResponseModalProps) => {
 
           <Text style={styles.label}>Klasifikasi Prioritas:</Text>
           <View style={styles.priorityContainer}>
-             {(['Umum', 'Penting', 'Darurat'] as const).map((p) => (
+             {(['low', 'medium', 'high'] as const).map((p) => (
                <TouchableOpacity
                  key={p}
                  style={[styles.prioBadge, priority === p && styles.prioActive(p)]}
                  onPress={() => setPriority(p)}
                >
-                 <Text style={[styles.prioText, priority === p && { color: '#fff' }]}>{p}</Text>
+                 <Text style={[styles.prioText, priority === p && { color: '#fff' }]}>
+                   {p === 'low' ? 'Rendah' : p === 'medium' ? 'Sedang' : 'Tinggi'}
+                 </Text>
                </TouchableOpacity>
              ))}
           </View>
@@ -292,37 +260,36 @@ const ResponseModal = ({ visible, onClose, item }: ResponseModalProps) => {
 // 4. COMPONENT: FEEDBACK CARD
 // ==========================================
 
-const FeedbackCard = ({ item, onRespond, onComplete }: { item: FeedbackDB, onRespond: (i: FeedbackDB) => void, onComplete: (id: string) => void }) => {
-  const isDone = item.status === 'Selesai';
+const FeedbackCard = ({ item, onRespond, onComplete }: { item: Feedback, onRespond: (i: Feedback) => void, onComplete: (id: string) => void }) => {
+  const isDone = item.status === 'resolved';
+  
+  const getPriorityColor = (priority: string) => {
+    switch(priority) {
+      case 'high': return '#ef4444';
+      case 'medium': return '#f97316';
+      case 'low': return '#3b82f6';
+      default: return '#9ca3af';
+    }
+  };
 
   return (
     <View style={styles.card}>
       <View style={styles.cardInner}>
 
-        {/* Kolom Kiri: Gambar */}
-        <View style={styles.imageContainer}>
-          {item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={styles.feedbackImage} />
-          ) : (
-            <View style={styles.placeholderImage}>
-              <ImageIcon size={32} color="#9ca3af" />
-            </View>
-          )}
-        </View>
-
         {/* Kolom Kanan: Konten */}
         <View style={styles.contentContainer}>
 
           <View style={styles.cardHeaderRow}>
-             {item.priority === 'Darurat' && <AlertTriangle size={14} color="#ef4444" style={{marginRight:4}} />}
+             {item.priority === 'high' && <AlertTriangle size={14} color="#ef4444" style={{marginRight:4}} />}
              <Text style={styles.dateText}>{formatDate(item.createdAt)}</Text>
           </View>
 
           <View style={{ gap: 4, marginBottom: 12 }}>
-             <Text style={styles.senderName}>{item.memberId}</Text>
+             <Text style={styles.senderName}>{item.memberName}</Text>
+             <Text style={styles.itemTitle}>{item.subject}</Text>
              <Text style={styles.messageText} numberOfLines={3}>{item.message}</Text>
-             {item.adminResponse ? (
-               <Text style={styles.responseText}>↪ Admin: {item.adminResponse}</Text>
+             {item.response ? (
+               <Text style={styles.responseText}>↪ Admin: {item.response}</Text>
              ) : null}
           </View>
 
@@ -354,42 +321,87 @@ const FeedbackCard = ({ item, onRespond, onComplete }: { item: FeedbackDB, onRes
 
 export default function FeedbackPage() {
   const router = useRouter();
-  const [feedbackList, setFeedbackList] = useState<FeedbackDB[]>([]);
+  const { user } = useAuth();
+  const [feedbackList, setFeedbackList] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
+  const [kostName, setKostName] = useState<string>("");
 
   // Modals
   const [respondModalVisible, setRespondModalVisible] = useState(false);
   const [addModalVisible, setAddModalVisible] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<FeedbackDB | null>(null);
+  const [selectedItem, setSelectedItem] = useState<Feedback | null>(null);
 
-  // REALTIME FETCH
+  // Fetch kost profile to get kost name
   useEffect(() => {
-    const q = query(collection(db, "feedback"), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data: FeedbackDB[] = [];
-      snapshot.forEach((doc) => {
-        data.push({ id: doc.id, ...doc.data() } as FeedbackDB);
-      });
-      setFeedbackList(data);
-      setLoading(false);
-    }, (error) => {
-      console.error(error);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    const fetchKostProfile = async () => {
+      if (!user?.kostId) return;
+      try {
+        const kostDoc = await getDoc(doc(db, "profileKost", user.kostId));
+        if (kostDoc.exists()) {
+          setKostName(kostDoc.data()?.name || "Kost");
+        }
+      } catch (error) {
+        console.error("Error fetching kost profile:", error);
+      }
+    };
+    fetchKostProfile();
+  }, [user?.kostId]);
 
-  const handleOpenRespond = (item: FeedbackDB) => {
+  // Fetch feedback by kostId
+  const fetchFeedback = async () => {
+    if (!user?.kostId) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const data = await getFeedbackByKostId(user.kostId);
+      setFeedbackList(data);
+    } catch (error) {
+      console.error("Error fetching feedback:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFeedback();
+  }, [user?.kostId]);
+
+  const handleOpenRespond = (item: Feedback) => {
     setSelectedItem(item);
     setRespondModalVisible(true);
   };
 
-  const handleMarkComplete = (id: string) => {
-    Alert.alert("Konfirmasi", "Tandai laporan ini sebagai selesai?", [
-      { text: "Batal", style: "cancel" },
-      { text: "Ya, Selesai", onPress: () => updateFeedbackStatus(id, { status: 'Selesai' }) }
-    ]);
+  const handleMarkComplete = async (id: string) => {
+    const confirmed = Platform.OS === 'web' 
+      ? window.confirm("Tandai laporan ini sebagai selesai?")
+      : await new Promise(resolve => {
+          Alert.alert("Konfirmasi", "Tandai laporan ini sebagai selesai?", [
+            { text: "Batal", style: "cancel", onPress: () => resolve(false) },
+            { text: "Ya, Selesai", onPress: () => resolve(true) }
+          ]);
+        });
+    
+    if (confirmed) {
+      try {
+        await updateFeedback(id, { status: 'resolved' });
+        fetchFeedback();
+      } catch (error) {
+        console.error("Error updating feedback:", error);
+        Alert.alert("Error", "Gagal mengupdate status");
+      }
+    }
   };
+
+  if (!user?.kostId) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Text style={{color: '#fff', textAlign: 'center', marginTop: 20}}>
+          KostId tidak ditemukan. Silakan login ulang.
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -415,7 +427,7 @@ export default function FeedbackPage() {
         <View style={styles.pageTitleContainer}>
           <View>
             <Text style={styles.pageTitle}>Aduan dan Feedback</Text>
-            <Text style={styles.pageSubtitle}>Kost Kurnia</Text>
+            <Text style={styles.pageSubtitle}>{kostName || 'Memuat...'}</Text>
           </View>
           <TouchableOpacity style={styles.addHeaderBtn} onPress={() => setAddModalVisible(true)}>
              <Text style={styles.addBtnText}>+ Lapor</Text>
@@ -460,6 +472,10 @@ export default function FeedbackPage() {
       <AddFeedbackModal
         visible={addModalVisible}
         onClose={() => setAddModalVisible(false)}
+        onSuccess={fetchFeedback}
+        kostId={user?.kostId || ''}
+        userId={user?.uid || ''}
+        userName={user?.nama || 'Admin'}
       />
 
     </SafeAreaView>
@@ -567,8 +583,8 @@ const styles = StyleSheet.create({
   priorityContainer: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   prioBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#ddd' },
   prioActive: (type: string) => {
-    if (type === 'Darurat') return { backgroundColor: '#ef4444', borderColor: '#ef4444' };
-    if (type === 'Penting') return { backgroundColor: '#f97316', borderColor: '#f97316' };
+    if (type === 'high') return { backgroundColor: '#ef4444', borderColor: '#ef4444' };
+    if (type === 'medium') return { backgroundColor: '#f97316', borderColor: '#f97316' };
     return { backgroundColor: '#3b82f6', borderColor: '#3b82f6' };
   },
   prioText: { fontSize: 12, color: "#333" },
