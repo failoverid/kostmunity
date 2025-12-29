@@ -1,20 +1,30 @@
+import { auth, createUserWithEmailAndPassword, db } from '@/lib/firebase-clients';
 import { useRouter } from 'expo-router';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
-import { auth, db, createUserWithEmailAndPassword } from '@/lib/firebase-clients';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+
+// Generate random invite code for kost
+const generateInviteCode = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
 
 export default function RegisterAdminPage() {
   const [kostName, setKostName] = useState('');
@@ -52,22 +62,23 @@ export default function RegisterAdminPage() {
 
       // Simpan data admin ke Firestore
       await setDoc(doc(db, 'users', user.uid), {
-        name: ownerName,
+        nama: ownerName, // Changed from 'name' to 'nama' to match AuthContext
         email: user.email,
         role: 'admin',
         kostName: kostName,
-        ownerId: user.uid,
+        ownerId: user.uid, // Set ownerId to user's own UID for kostId reference
         createdAt: serverTimestamp(),
       });
 
-      // Buat dokumen kost
-      await setDoc(doc(db, 'kosts', user.uid), {
+      // Buat dokumen kost di collection 'profileKost' (bukan 'kosts')
+      await setDoc(doc(db, 'profileKost', user.uid), {
         name: kostName,
+        address: 'Belum diatur', // Default address
+        rooms: '10', // Default total rooms
+        idKost: user.uid,
         ownerId: user.uid,
-        ownerName: ownerName,
-        ownerEmail: user.email,
+        inviteCode: generateInviteCode(),
         createdAt: serverTimestamp(),
-        status: 'active',
       });
 
       Alert.alert(

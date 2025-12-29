@@ -1,18 +1,18 @@
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where,
-  orderBy,
-  serverTimestamp 
-} from 'firebase/firestore';
 import { db } from '@/lib/firebase-clients';
 import { MemberInfo, MemberInfoCreateInput, MemberInfoUpdateInput } from '@/models/MemberInfo';
+import {
+    addDoc,
+    collection,
+    deleteDoc,
+    doc,
+    getDoc,
+    getDocs,
+    orderBy,
+    query,
+    serverTimestamp,
+    updateDoc,
+    where
+} from 'firebase/firestore';
 
 const COLLECTION_NAME = 'memberInfo';
 
@@ -122,17 +122,25 @@ export async function getActiveMembers(kostId?: string): Promise<MemberInfo[]> {
 }
 
 /**
- * Create a new member
+ * Create a new member (data only, without Firebase Auth account)
+ * Member needs to register themselves using the email provided here
+ * Or use default password: 123456 if you uncomment the auth creation code
  */
 export async function createMember(memberData: MemberInfoCreateInput): Promise<string> {
   try {
+    // Create member info document only
+    // Member will need to register themselves later with this email
     const docRef = await addDoc(collection(db, COLLECTION_NAME), {
       ...memberData,
-      status: memberData.status || 'active',
+      status: memberData.status || 'pending', // Set to pending until member registers
       joinedAt: serverTimestamp(),
     });
+
+    // Note: Member needs to register via register-member page
+    // They should use the email that admin provided here
+    
     return docRef.id;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating member:', error);
     throw error;
   }

@@ -1,35 +1,33 @@
 import { useRouter } from "expo-router";
-import { ArrowRight, Home, Pencil, Plus, Trash2, X, Search, UserPlus, Edit } from "lucide-react-native";
+import { ArrowRight, Home, Pencil, Plus, Search, Trash2, X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Modal,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    Modal,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 
 // --- FIREBASE IMPORTS ---
-import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
-import { db } from "../../../../lib/firebase-clients";
 
 // --- IMPORT SERVICES & HOOKS BARU ---
-import { useMembers } from "../../../../hooks/useMembers";
-import { 
-  deleteMember as deleteMemberService, 
-  updateMember,
-  createMember 
-} from "../../../../services/memberService";
-import { MemberInfo } from "../../../../models/MemberInfo";
-import { formatCurrency, formatDate, getStatusColor } from "../../../../lib/formatting";
 import { useAuth } from "../../../../contexts/AuthContext";
+import { useMembers } from "../../../../hooks/useMembers";
+import { getStatusColor } from "../../../../lib/formatting";
+import { MemberInfo } from "../../../../models/MemberInfo";
+import {
+    createMember,
+    deleteMember as deleteMemberService,
+    updateMember
+} from "../../../../services/memberService";
 
 // --- SIMULASI AUTH ---
 // Ganti string ini dengan ID Kost milik Admin yang sedang Login
@@ -42,9 +40,10 @@ interface MemberModalProps {
   visible: boolean;
   onClose: () => void;
   editData: MemberInfo | null;
+  onSuccess: () => void;
 }
 
-const MemberModal = ({ visible, onClose, editData }: MemberModalProps) => {
+const MemberModal = ({ visible, onClose, editData, onSuccess }: MemberModalProps) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
 
@@ -87,10 +86,14 @@ const MemberModal = ({ visible, onClose, editData }: MemberModalProps) => {
           phone,
           room,
           kostId,
-          status: 'active'
+          status: 'pending' // Pending until member registers themselves
         });
-        Alert.alert("Berhasil", "Member baru ditambahkan dengan password default: 123456");
+        Alert.alert(
+          "Berhasil", 
+          "Data member ditambahkan. Member perlu mendaftar sendiri menggunakan email: " + email
+        );
       }
+      onSuccess();
       onClose();
     } catch (error) {
       console.error(error);
@@ -221,13 +224,40 @@ export default function MembersPage() {
           try {
             await deleteMemberService(id);
             Alert.alert("Berhasil", "Member berhasil dihapus");
-            refetch();
+            refetch(); // Refresh data
           } catch (error) {
+            console.error('Delete error:', error);
             Alert.alert("Error", "Gagal menghapus member");
           }
         }
       }
     ]);
+  };
+
+  const handleToggleStatus = async (member: MemberInfo) => {
+    const newStatus = member.status === 'active' ? 'inactive' : 'active';
+    const statusText = newStatus === 'active' ? 'mengaktifkan' : 'menonaktifkan';
+    
+    Alert.alert(
+      "Ubah Status Member", 
+      `Yakin ingin ${statusText} ${member.name}?`, 
+      [
+        { text: "Batal", style: "cancel" },
+        { 
+          text: "Ya", 
+          onPress: async () => {
+            try {
+              await updateMember(member.id, { status: newStatus });
+              Alert.alert("Berhasil", `Member berhasil ${statusText === 'mengaktifkan' ? 'diaktifkan' : 'dinonaktifkan'}`);
+              refetch();
+            } catch (error) {
+              console.error('Update status error:', error);
+              Alert.alert("Error", "Gagal mengubah status");
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Loading state
@@ -317,6 +347,15 @@ export default function MembersPage() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  style={[styles.filterChip, selectedStatus === "pending" && styles.filterChipActive]}
+                  onPress={() => setSelectedStatus("pending")}
+                >
+                  <Text style={[styles.filterText, selectedStatus === "pending" && styles.filterTextActive]}>
+                    Pending ({members.filter(m => m.status === "pending").length})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   style={[styles.filterChip, selectedStatus === "inactive" && styles.filterChipActive]}
                   onPress={() => setSelectedStatus("inactive")}
                 >
@@ -358,12 +397,15 @@ export default function MembersPage() {
                     </View>
 
                     <View style={{ flex: 1, alignItems: 'center' }}>
-                      <View style={[
-                        styles.statusBadge, 
-                        { backgroundColor: getStatusColor(member.status || 'active') }
-                      ]}>
+                      <TouchableOpacity 
+                        onPress={() => handleToggleStatus(member)}
+                        style={[
+                          styles.statusBadge, 
+                          { backgroundColor: getStatusColor(member.status || 'active') }
+                        ]}
+                      >
                         <Text style={styles.statusText}>{member.status || 'active'}</Text>
-                      </View>
+                      </TouchableOpacity>
                     </View>
 
                     <View style={[styles.actionContainer, { flex: 1 }]}>
@@ -393,7 +435,12 @@ export default function MembersPage() {
           </TouchableOpacity>
         </View>
 
-        <MemberModal visible={modalVisible} onClose={() => setModalVisible(false)} editData={editingMember} />
+        <MemberModal 
+          visible={modalVisible} 
+          onClose={() => setModalVisible(false)} 
+          editData={editingMember}
+          onSuccess={refetch}
+        />
       </SafeAreaView>
   );
 }

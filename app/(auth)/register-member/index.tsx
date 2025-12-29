@@ -1,20 +1,20 @@
+import { auth, createUserWithEmailAndPassword, db } from '@/lib/firebase-clients';
 import { useRouter } from 'expo-router';
+import { collection, doc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
-import { auth, db, createUserWithEmailAndPassword } from '@/lib/firebase-clients';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function RegisterMemberPage() {
   const [name, setName] = useState('');
@@ -45,24 +45,65 @@ export default function RegisterMemberPage() {
     setLoading(true);
 
     try {
-      // Buat akun di Firebase Auth
+      // 1. CEK WAJIB: Email harus sudah terdaftar di memberInfo (dibuat oleh admin)
+      const memberInfoQuery = query(
+        collection(db, 'memberInfo'), 
+        where('email', '==', email)
+      );
+      const memberInfoSnapshot = await getDocs(memberInfoQuery);
+      
+      if (memberInfoSnapshot.empty) {
+        // Email belum didaftarkan admin
+        Alert.alert(
+          'Email Tidak Terdaftar',
+          'Email Anda belum terdaftar oleh admin kost. Silakan hubungi admin kost untuk mendaftarkan email Anda terlebih dahulu.'
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Ambil data member yang sudah dibuat admin
+      const memberDoc = memberInfoSnapshot.docs[0];
+      const memberData = memberDoc.data();
+      const memberId = memberDoc.id;
+      
+      console.log('Found existing member data from admin:', memberData);
+
+      // 2. Buat akun di Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Simpan data member ke Firestore
-      // Note: Admin perlu approve atau assign ke kost tertentu
+      // 3. Simpan data di collection 'users' dengan data dari admin
       await setDoc(doc(db, 'users', user.uid), {
-        name: name,
+        nama: memberData.name,
         email: user.email,
         role: 'member',
+        kostId: memberData.kostId,
+        kamar: memberData.room,
+        status: 'active', // Langsung active karena sudah didaftarkan admin
         createdAt: serverTimestamp(),
-        status: 'pending', // Menunggu approval admin
       });
 
+      // 4. Update memberInfo dengan userId dan status active
+      await updateDoc(doc(db, 'memberInfo', memberId), {
+        userId: user.uid,
+        status: 'active', // Activate member
+      });
+      
+      // Tunggu sebentar untuk memastikan data tersimpan
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       Alert.alert(
-        'Pendaftaran Berhasil',
-        'Akun Anda telah dibuat. Silakan hubungi admin kost untuk aktivasi.',
-        [{ text: 'OK', onPress: () => router.replace('/(auth)/success-register') }]
+        'Pendaftaran Berhasil!',
+        `Selamat datang ${memberData.name}! Akun Anda telah aktif.\n\nKamar: ${memberData.room}`,
+        [{ 
+          text: 'Lanjutkan', 
+          onPress: () => {
+            // User sudah otomatis login dari createUserWithEmailAndPassword
+            // Langsung redirect ke dashboard member
+            router.replace('/dashboard/member');
+          }
+        }]
       );
     } catch (error: any) {
       console.error('Register error:', error);
@@ -86,7 +127,7 @@ export default function RegisterMemberPage() {
         <View style={styles.header}>
           <Text style={styles.icon}>📝</Text>
           <Text style={styles.title}>Daftar Member</Text>
-          <Text style={styles.subtitle}>Bergabung sebagai penghuni kost</Text>
+          <Text style={styles.subtitle}>Email harus sudah terdaftar oleh admin kost</Text>
         </View>
 
         <View style={styles.form}>

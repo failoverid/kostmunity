@@ -144,7 +144,7 @@ const MiniServiceRow = ({ item }: { item: ServiceData }) => (
 // --- KOMPONEN UTAMA ---
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
 
   // Redirect if not admin
   useEffect(() => {
@@ -157,12 +157,14 @@ export default function AdminDashboardPage() {
 
   // --- USE HOOKS BARU ---
   const { members: allMembers, loading: loadingMembers } = useMembers(kostId);
-  const { tagihan: tagihanList, loading: loadingTagihan } = useTagihanList('kost', kostId);
+  const { tagihan, loading: loadingTagihan } = useTagihanList('kost', kostId);
+  const tagihanList = tagihan ? [tagihan] : []; // Convert single tagihan to array
 
   // --- STATE KOST PROFILE ---
   const [kostProfile, setKostProfile] = useState<ProfileKostType | null>(null);
-  const [isEditingName, setIsEditingName] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [tempName, setTempName] = useState("");
+  const [tempAddress, setTempAddress] = useState("");
   const [loadingProfile, setLoadingProfile] = useState(true);
 
   // --- STATE SERVICES ---
@@ -177,15 +179,44 @@ export default function AdminDashboardPage() {
 
   // 1. FETCH KOST PROFILE
   useEffect(() => {
-    if (!kostId) return;
-    const unsubKost = onSnapshot(doc(db, "profileKost", kostId), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data() as ProfileKostType;
-        setKostProfile({ ...data, id: docSnap.id } as any);
-        setTempName(data.name);
-      }
+    if (!kostId) {
       setLoadingProfile(false);
-    });
+      return;
+    }
+    
+    console.log('Fetching kost profile for:', kostId);
+    const unsubKost = onSnapshot(
+      doc(db, "profileKost", kostId), 
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data() as ProfileKostType;
+          console.log('Kost profile loaded:', data);
+          setKostProfile({ ...data, id: docSnap.id } as any);
+          setTempName(data.name);
+          setTempAddress(data.address || 'Belum diatur');
+        } else {
+          console.log('Kost profile not found for:', kostId);
+          // Set default data if not exists
+          setKostProfile({
+            id: kostId,
+            name: 'Kost Baru',
+            address: 'Belum diatur',
+            rooms: '0',
+            idKost: kostId,
+            ownerId: user?.uid || '',
+            inviteCode: '',
+            createdAt: null as any
+          });
+          setTempName('Kost Baru');
+          setTempAddress('Belum diatur');
+        }
+        setLoadingProfile(false);
+      },
+      (error) => {
+        console.error('Error fetching kost profile:', error);
+        setLoadingProfile(false);
+      }
+    );
     return () => unsubKost();
   }, [kostId]);
 
@@ -223,9 +254,11 @@ export default function AdminDashboardPage() {
 
   // 3. Update Bill Count saat tagihanList berubah
   useEffect(() => {
-      if (tagihanList) {
+      if (Array.isArray(tagihanList) && tagihanList.length > 0) {
           const unpaid = tagihanList.filter((t: any) => t.status === "Belum Lunas").length;
           setCounts(prev => ({ ...prev, activeBills: unpaid }));
+      } else {
+          setCounts(prev => ({ ...prev, activeBills: 0 }));
       }
   }, [tagihanList]);
 
@@ -236,23 +269,30 @@ export default function AdminDashboardPage() {
     kamar: m.room,
     status: m.status || 'active'
   }));
-  const bills = tagihanList.slice(0, 3);
+  const bills = Array.isArray(tagihanList) ? tagihanList.slice(0, 3) : [];
 
   const loading = loadingMembers || loadingTagihan || loadingProfile;
 
-  // --- HANDLER UPDATE NAMA KOST ---
-  const handleSaveName = async () => {
+  // --- HANDLER UPDATE PROFILE KOST ---
+  const handleSaveProfile = async () => {
     if (!tempName.trim()) {
       Alert.alert("Error", "Nama kost tidak boleh kosong");
       return;
     }
+    if (!tempAddress.trim()) {
+      Alert.alert("Error", "Alamat tidak boleh kosong");
+      return;
+    }
 
     try {
-      await updateKostProfile(kostId, { name: tempName });
-      setIsEditingName(false);
-      Alert.alert("Berhasil", "Nama kost berhasil diupdate");
+      await updateKostProfile(kostId, { 
+        name: tempName,
+        address: tempAddress 
+      });
+      setIsEditingProfile(false);
+      Alert.alert("Berhasil", "Profil kost berhasil diupdate");
     } catch (error) {
-      Alert.alert("Gagal", "Terjadi kesalahan saat menyimpan nama kost");
+      Alert.alert("Gagal", "Terjadi kesalahan saat menyimpan profil kost");
       console.error(error);
     }
   };
@@ -290,31 +330,50 @@ export default function AdminDashboardPage() {
           <View style={styles.card}>
             <View style={styles.nameCardContent}>
               <View style={{flex: 1}}>
-                <View style={{flexDirection:'row', alignItems:'center', justifyContent:'space-between'}}>
-                  {isEditingName ? (
-                      <TextInput
-                          style={styles.nameInput}
-                          value={tempName}
-                          onChangeText={setTempName}
-                          autoFocus
-                      />
-                  ) : (
-                      <Text style={styles.nameText}>{kostProfile?.name || "Memuat..."}</Text>
-                  )}
-
+                <View style={{flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom: 8}}>
+                  <Text style={{fontSize: 14, fontWeight: '600', color: '#6b7280'}}>Profil Kost</Text>
                   <TouchableOpacity
-                      onPress={() => isEditingName ? handleSaveName() : setIsEditingName(true)}
+                      onPress={() => isEditingProfile ? handleSaveProfile() : setIsEditingProfile(true)}
                       style={styles.iconButton}
                   >
-                    {isEditingName ? <Check size={20} color="#16a34a" /> : <Pencil size={20} color="#6b7280" />}
+                    {isEditingProfile ? <Check size={20} color="#16a34a" /> : <Pencil size={20} color="#6b7280" />}
                   </TouchableOpacity>
                 </View>
 
-                <View style={{flexDirection:'row', alignItems:'center', marginTop: 4, opacity: 0.6}}>
-                  <MapPin size={12} color="#1f2937" style={{marginRight: 4}}/>
-                  <Text style={{fontSize: 12, color: '#1f2937'}} numberOfLines={1}>
-                    {kostProfile?.address || "Alamat belum diatur"}
-                  </Text>
+                {/* Nama Kost */}
+                <View style={{marginBottom: 8}}>
+                  <Text style={{fontSize: 11, color: '#9ca3af', marginBottom: 4}}>Nama Kost</Text>
+                  {isEditingProfile ? (
+                      <TextInput
+                          style={[styles.nameInput, {fontSize: 16}]}
+                          value={tempName}
+                          onChangeText={setTempName}
+                          placeholder="Nama kost"
+                      />
+                  ) : (
+                      <Text style={[styles.nameText, {fontSize: 16}]}>{kostProfile?.name || "Memuat..."}</Text>
+                  )}
+                </View>
+
+                {/* Alamat */}
+                <View>
+                  <Text style={{fontSize: 11, color: '#9ca3af', marginBottom: 4}}>Alamat</Text>
+                  {isEditingProfile ? (
+                      <TextInput
+                          style={[styles.nameInput, {fontSize: 12}]}
+                          value={tempAddress}
+                          onChangeText={setTempAddress}
+                          placeholder="Alamat lengkap kost"
+                          multiline
+                      />
+                  ) : (
+                      <View style={{flexDirection:'row', alignItems:'center'}}>
+                        <MapPin size={12} color="#1f2937" style={{marginRight: 4}}/>
+                        <Text style={{fontSize: 12, color: '#1f2937', flex: 1}} numberOfLines={2}>
+                          {kostProfile?.address || "Alamat belum diatur"}
+                        </Text>
+                      </View>
+                  )}
                 </View>
               </View>
             </View>
@@ -326,8 +385,8 @@ export default function AdminDashboardPage() {
               <StatBox
                   title="Kamar Terisi"
                   value={allMembers.length}
-                  subtext={kostProfile ? `dari ${kostProfile.rooms} kamar` : ""}
-                  loading={loading}
+                  subtext={kostProfile?.rooms ? `dari ${kostProfile.rooms} kamar` : ""}
+                  loading={loadingMembers}
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -408,7 +467,14 @@ export default function AdminDashboardPage() {
 
           {/* 8. SIGN OUT */}
           <View style={{ alignItems: 'center', paddingTop: 16, paddingBottom: 32 }}>
-            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => router.replace('/')}>
+            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={async () => {
+              try {
+                await signOut();
+                router.replace('/landing');
+              } catch (error) {
+                Alert.alert('Error', 'Gagal logout. Silakan coba lagi.');
+              }
+            }}>
               <LogOut size={16} color="#4b5563" style={{ marginRight: 8 }} />
               <Text style={{ color: '#4b5563', fontSize: 14 }}>Sign Out</Text>
             </TouchableOpacity>
