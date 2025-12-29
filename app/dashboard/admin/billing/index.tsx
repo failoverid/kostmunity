@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { ArrowRight, Edit3, Home, Plus, Search, Trash2, Upload, X } from "lucide-react-native";
+import { ArrowRight, Calendar, Edit3, Home, Plus, Search, Trash2, X } from "lucide-react-native";
 import React, { useState } from "react";
 import {
     ActivityIndicator,
@@ -18,16 +18,14 @@ import {
     View
 } from "react-native";
 
-// --- FIREBASE IMPORTS ---
-import { addDoc, collection } from 'firebase/firestore';
-import { db } from '../../../../lib/firebase-clients';
-
 // --- IMPORT HOOKS & SERVICES BARU ---
 import { useAuth } from "../../../../contexts/AuthContext";
+import { useMembers } from "../../../../hooks/useMembers";
 import { useTagihanList } from "../../../../hooks/useTagihan";
 import { formatCurrency } from "../../../../lib/formatting";
+import type { MemberInfo } from "../../../../models/MemberInfo";
 import type { Tagihan } from "../../../../models/Tagihan";
-import { deleteTagihan, updateTagihan } from "../../../../services/tagihanService";
+import { createTagihan, deleteTagihan, updateTagihan } from "../../../../services/tagihanService";
 
 // ==========================================
 // HELPER FUNCTIONS
@@ -42,106 +40,290 @@ const formatStatus = (status: string) => {
 };
 
 // ==========================================
-// 2. COMPONENT: ADD BILL MODAL (DIPERBAIKI)
+// 2. COMPONENT: TAGIHAN MODAL (CREATE/EDIT)
 // ==========================================
 
-interface AddBillModalProps {
+interface TagihanModalProps {
   visible: boolean;
   onClose: () => void;
-  kostId: string;        // TAMBAHAN: Butuh ID Kost
-  onSuccess: () => void; // TAMBAHAN: Untuk refresh list setelah simpan
+  kostId: string;
+  onSuccess: () => void;
+  editingTagihan?: Tagihan | null;
+  members: MemberInfo[];
 }
 
-const AddBillModal = ({ visible, onClose, kostId, onSuccess }: AddBillModalProps) => {
+const TagihanModal = ({ visible, onClose, kostId, onSuccess, editingTagihan, members }: TagihanModalProps) => {
   const [loading, setLoading] = useState(false);
-  const [nama, setNama] = useState("");
-  const [kamar, setKamar] = useState("");
-  const [jumlah, setJumlah] = useState("");
-  const [jatuhTempo, setJatuhTempo] = useState("");
+  const [selectedMemberId, setSelectedMemberId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  // Populate form when editing
+  React.useEffect(() => {
+    if (editingTagihan) {
+      setSelectedMemberId(editingTagihan.memberId);
+      setAmount(editingTagihan.amount.toString());
+      setDueDate(editingTagihan.dueDate);
+      // Try to parse existing date
+      const parsed = new Date(editingTagihan.dueDate);
+      if (!isNaN(parsed.getTime())) {
+        setSelectedDate(parsed);
+      }
+    } else {
+      setSelectedMemberId("");
+      setAmount("");
+      setDueDate("");
+      setSelectedDate(new Date());
+    }
+  }, [editingTagihan, visible]);
+
+  const selectedMember = members.find(m => m.id === selectedMemberId);
+
+  const formatDate = (date: Date): string => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
+    return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+  };
+
+  const handleDateSelect = (date: Date) => {
+    setSelectedDate(date);
+    setDueDate(formatDate(date));
+    setShowDatePicker(false);
+  };
 
   const handleSave = async () => {
-    if (!nama || !kamar || !jumlah || !jatuhTempo) {
-      Alert.alert("Mohon Lengkapi Data", "Semua kolom harus diisi.");
+    if (!selectedMemberId || !amount || !dueDate) {
+      if (Platform.OS === 'web') {
+        alert("Mohon lengkapi semua data");
+      } else {
+        Alert.alert("Error", "Mohon lengkapi semua data");
+      }
       return;
     }
 
     setLoading(true);
     try {
-      const cleanAmount = parseInt(jumlah.replace(/[^0-9]/g, ""));
+      const cleanAmount = parseInt(amount.replace(/[^0-9]/g, ""));
+      const member = members.find(m => m.id === selectedMemberId);
 
-      await addDoc(collection(db, "tagihan"), {
-        memberId: nama,
-        room: kamar,
-        amount: cleanAmount,
-        dueDate: jatuhTempo,
-        status: "Belum Lunas",
-        createdAt: new Date(),
-        kostId: kostId, // PERBAIKAN UTAMA: Menyimpan ID Kost
-      });
+      if (!member) {
+        throw new Error("Member tidak ditemukan");
+      }
 
-      Alert.alert("Sukses", "Tagihan berhasil ditambahkan");
+      if (editingTagihan) {
+        // Update existing
+        await updateTagihan(editingTagihan.id, {
+          amount: cleanAmount,
+          dueDate: dueDate,
+        });
+        if (Platform.OS === 'web') {
+          alert("Tagihan berhasil diupdate");
+        } else {
+          Alert.alert("Sukses", "Tagihan berhasil diupdate");
+        }
+      } else {
+        // Create new
+        await createTagihan({
+          memberId: selectedMemberId,
+          memberName: member.name,
+          room: member.room,
+          amount: cleanAmount,
+          dueDate: dueDate,
+          status: "Belum Lunas",
+          kostId: kostId,
+        });
+        if (Platform.OS === 'web') {
+          alert("Tagihan berhasil ditambahkan");
+        } else {
+          Alert.alert("Sukses", "Tagihan berhasil ditambahkan");
+        }
+      }
 
-      // Reset Form
-      setNama(""); setKamar(""); setJumlah(""); setJatuhTempo("");
-
-      // Refresh Data & Tutup Modal
       onSuccess();
       onClose();
-    } catch (error) {
-      console.error("Error adding doc:", error);
-      Alert.alert("Error", "Gagal menyimpan data");
+    } catch (error: any) {
+      console.error("Error saving tagihan:", error);
+      if (Platform.OS === 'web') {
+        alert("Error: " + (error?.message || "Gagal menyimpan tagihan"));
+      } else {
+        Alert.alert("Error", error?.message || "Gagal menyimpan tagihan");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-      <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={modalStyles.overlay}>
-          <View style={modalStyles.modalContainer}>
-
-            {/* Header Modal */}
-            <View style={modalStyles.headerRow}>
-              <View style={modalStyles.logoContainer}>
-                <Image source={require("../../../../assets/kostmunity-logo.png")} style={modalStyles.logoIcon} resizeMode="contain"/>
-                <View>
-                  <Text style={modalStyles.logoTextMain}>kostmunity</Text>
-                  <Text style={modalStyles.logoTextSub}>billing system</Text>
-                </View>
+    <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={modalStyles.overlay}>
+        <View style={modalStyles.modalContainer}>
+          {/* Header Modal */}
+          <View style={modalStyles.headerRow}>
+            <View style={modalStyles.logoContainer}>
+              <Image source={require("../../../../assets/kostmunity-logo.png")} style={modalStyles.logoIcon} resizeMode="contain"/>
+              <View>
+                <Text style={modalStyles.logoTextMain}>kostmunity</Text>
+                <Text style={modalStyles.logoTextSub}>
+                  {editingTagihan ? "Edit Tagihan" : "Buat Tagihan"}
+                </Text>
               </View>
-              <TouchableOpacity onPress={onClose} style={modalStyles.closeButton}>
-                <X size={20} color="#1f2937" />
-              </TouchableOpacity>
             </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={modalStyles.formGroup}>
-                <TextInput style={modalStyles.input} placeholder="Nama Penghuni" placeholderTextColor="#A0A090" value={nama} onChangeText={setNama} />
-                <TextInput style={modalStyles.input} placeholder="Nomor Kamar (ex: A-101)" placeholderTextColor="#A0A090" value={kamar} onChangeText={setKamar} />
-                <TextInput style={modalStyles.input} placeholder="Total Tagihan (Rp)" placeholderTextColor="#A0A090" keyboardType="numeric" value={jumlah} onChangeText={setJumlah} />
-                <TextInput style={modalStyles.input} placeholder="Jatuh Tempo (ex: 25 Okt)" placeholderTextColor="#A0A090" value={jatuhTempo} onChangeText={setJatuhTempo} />
-
-                <TouchableOpacity style={modalStyles.uploadArea}>
-                  <Upload size={24} color="#A0A090" />
-                  <Text style={modalStyles.uploadText}>Upload Dokumen Pendukung (Opsional)</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-
-            <View style={modalStyles.footer}>
-              <TouchableOpacity style={modalStyles.submitButton} onPress={handleSave} disabled={loading}>
-                {loading ? <ActivityIndicator color="#fff"/> : (
-                    <>
-                      <Text style={modalStyles.submitButtonText}>Buat Tagihan</Text>
-                      <View style={modalStyles.arrowContainer}><ArrowRight size={16} color="#fff" /></View>
-                    </>
-                )}
-              </TouchableOpacity>
-            </View>
-
+            <TouchableOpacity onPress={onClose} style={modalStyles.closeButton}>
+              <X size={20} color="#1f2937" />
+            </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={modalStyles.formGroup}>
+              {/* Member Picker */}
+              <TouchableOpacity
+                style={[modalStyles.input, { paddingVertical: 14 }]}
+                onPress={() => !editingTagihan && setShowMemberPicker(!showMemberPicker)}
+                disabled={!!editingTagihan}
+              >
+                <Text style={{ color: selectedMember ? "#2D2D2A" : "#A0A090" }}>
+                  {selectedMember ? `${selectedMember.name} - ${selectedMember.room}` : "Pilih Member"}
+                </Text>
+              </TouchableOpacity>
+
+              {showMemberPicker && !editingTagihan && (
+                <ScrollView style={{ maxHeight: 200, borderWidth: 1, borderColor: "#E2E2D5", borderRadius: 8, backgroundColor: "#FDFFF5" }}>
+                  {members.filter(m => m.status === 'active').map(member => (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: "#E2E2D5" }}
+                      onPress={() => {
+                        setSelectedMemberId(member.id);
+                        setShowMemberPicker(false);
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, color: "#2D2D2A", fontWeight: "600" }}>{member.name}</Text>
+                      <Text style={{ fontSize: 12, color: "#6b7280" }}>Kamar: {member.room} | {member.email}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+
+              {selectedMember && (
+                <View style={{ backgroundColor: "#f0fdf4", padding: 12, borderRadius: 8, borderWidth: 1, borderColor: "#86efac" }}>
+                  <Text style={{ fontSize: 12, color: "#15803d", fontWeight: "600" }}>Member Terpilih:</Text>
+                  <Text style={{ fontSize: 14, color: "#15803d", marginTop: 4 }}>
+                    {selectedMember.name} - Kamar {selectedMember.room}
+                  </Text>
+                </View>
+              )}
+
+              <TextInput
+                style={modalStyles.input}
+                placeholder="Total Tagihan (Rp)"
+                placeholderTextColor="#A0A090"
+                keyboardType="numeric"
+                value={amount}
+                onChangeText={setAmount}
+              />
+
+              {/* Date Picker Button */}
+              <TouchableOpacity
+                style={[modalStyles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 }]}
+                onPress={() => setShowDatePicker(true)}
+              >
+                <Text style={{ color: dueDate ? "#2D2D2A" : "#A0A090" }}>
+                  {dueDate || "Pilih Tanggal Jatuh Tempo"}
+                </Text>
+                <Calendar size={18} color="#A0A090" />
+              </TouchableOpacity>
+
+              {/* Calendar Picker */}
+              {showDatePicker && (
+                <View style={{ backgroundColor: "#fff", borderRadius: 8, padding: 16, borderWidth: 1, borderColor: "#E2E2D5" }}>
+                  {Platform.OS === 'web' ? (
+                    // Web date picker
+                    <input
+                      type="date"
+                      value={selectedDate.toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        const newDate = new Date(e.target.value);
+                        handleDateSelect(newDate);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        fontSize: '14px',
+                        borderRadius: '8px',
+                        border: '1px solid #E2E2D5',
+                        backgroundColor: '#FDFFF5'
+                      }}
+                    />
+                  ) : (
+                    // Mobile simple date selector
+                    <View>
+                      <Text style={{ fontSize: 14, color: "#2D2D2A", marginBottom: 12, fontWeight: "600" }}>Pilih Tanggal:</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {[...Array(31)].map((_, i) => {
+                          const day = i + 1;
+                          const testDate = new Date(selectedDate);
+                          testDate.setDate(day);
+                          const isSelected = selectedDate.getDate() === day;
+                          return (
+                            <TouchableOpacity
+                              key={day}
+                              style={{
+                                backgroundColor: isSelected ? "#6366f1" : "#f3f4f6",
+                                paddingHorizontal: 12,
+                                paddingVertical: 8,
+                                borderRadius: 6,
+                                minWidth: 40,
+                                alignItems: 'center'
+                              }}
+                              onPress={() => {
+                                const newDate = new Date(selectedDate);
+                                newDate.setDate(day);
+                                setSelectedDate(newDate);
+                              }}
+                            >
+                              <Text style={{ color: isSelected ? "#fff" : "#374151", fontSize: 13, fontWeight: "600" }}>{day}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                        <TouchableOpacity
+                          style={{ flex: 1, backgroundColor: "#f3f4f6", padding: 12, borderRadius: 8, alignItems: 'center' }}
+                          onPress={() => setShowDatePicker(false)}
+                        >
+                          <Text style={{ color: "#6b7280", fontWeight: "600" }}>Batal</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={{ flex: 1, backgroundColor: "#6366f1", padding: 12, borderRadius: 8, alignItems: 'center' }}
+                          onPress={() => handleDateSelect(selectedDate)}
+                        >
+                          <Text style={{ color: "#fff", fontWeight: "600" }}>Pilih</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          </ScrollView>
+
+          <View style={modalStyles.footer}>
+            <TouchableOpacity style={modalStyles.submitButton} onPress={handleSave} disabled={loading}>
+              {loading ? <ActivityIndicator color="#fff"/> : (
+                <>
+                  <Text style={modalStyles.submitButtonText}>
+                    {editingTagihan ? "Update Tagihan" : "Buat Tagihan"}
+                  </Text>
+                  <View style={modalStyles.arrowContainer}><ArrowRight size={16} color="#fff" /></View>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 };
 
@@ -205,10 +387,22 @@ export default function BillingPage() {
   const kostId = user?.kostId || "kost_kurnia_01";
 
   const { tagihan: tagihanList, loading, error, refetch } = useTagihanList('kost', kostId);
+  const { members, loading: loadingMembers } = useMembers(kostId);
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingTagihan, setEditingTagihan] = useState<Tagihan | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
+
+  const handleAdd = () => {
+    setEditingTagihan(null);
+    setModalVisible(true);
+  };
+
+  const handleEdit = (tagihan: Tagihan) => {
+    setEditingTagihan(tagihan);
+    setModalVisible(true);
+  };
 
   // Filter tagihan
   const filteredTagihan = tagihanList.filter((tagihan: Tagihan) => {
@@ -221,34 +415,52 @@ export default function BillingPage() {
   const handleUpdateStatus = async (id: string, newStatus: 'Belum Lunas' | 'Lunas' | 'Terlambat') => {
     try {
       await updateTagihan(id, { status: newStatus });
-      Alert.alert("Berhasil", "Status tagihan berhasil diupdate");
+      if (Platform.OS === 'web') {
+        alert("Status tagihan berhasil diupdate");
+      } else {
+        Alert.alert("Berhasil", "Status tagihan berhasil diupdate");
+      }
       refetch();
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Gagal mengupdate status tagihan");
+      if (Platform.OS === 'web') {
+        alert("Error: " + (error?.message || "Gagal mengupdate status tagihan"));
+      } else {
+        Alert.alert("Error", error?.message || "Gagal mengupdate status tagihan");
+      }
     }
   };
 
   const handleDeleteTagihan = async (id: string, memberName?: string) => {
-    Alert.alert(
-      "Hapus Tagihan",
-      `Yakin ingin menghapus tagihan ${memberName || 'ini'}?`,
-      [
-        { text: "Batal", style: "cancel" },
-        {
-          text: "Hapus",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteTagihan(id);
-              Alert.alert("Berhasil", "Tagihan berhasil dihapus");
-              refetch();
-            } catch (error: any) {
-              Alert.alert("Error", error.message || "Gagal menghapus tagihan");
-            }
-          }
-        }
-      ]
-    );
+    const confirmDelete = Platform.OS === 'web'
+      ? window.confirm(`Yakin ingin menghapus tagihan ${memberName || 'ini'}?`)
+      : await new Promise((resolve) => {
+          Alert.alert(
+            "Hapus Tagihan",
+            `Yakin ingin menghapus tagihan ${memberName || 'ini'}?`,
+            [
+              { text: "Batal", style: "cancel", onPress: () => resolve(false) },
+              { text: "Hapus", style: "destructive", onPress: () => resolve(true) }
+            ]
+          );
+        });
+
+    if (!confirmDelete) return;
+
+    try {
+      await deleteTagihan(id);
+      if (Platform.OS === 'web') {
+        alert("Tagihan berhasil dihapus");
+      } else {
+        Alert.alert("Berhasil", "Tagihan berhasil dihapus");
+      }
+      refetch();
+    } catch (error: any) {
+      if (Platform.OS === 'web') {
+        alert("Error: " + (error?.message || "Gagal menghapus tagihan"));
+      } else {
+        Alert.alert("Error", error?.message || "Gagal menghapus tagihan");
+      }
+    }
   };
 
   if (loading) {
@@ -298,7 +510,7 @@ export default function BillingPage() {
                   Total: {tagihanList.length} | Lunas: {tagihanList.filter((t: Tagihan) => t.status === "Lunas").length}
                 </Text>
               </View>
-              <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
+              <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
                 <Plus size={14} color="#fff" style={{ marginRight: 4 }} />
                 <Text style={styles.addButtonText}>Tambah</Text>
               </TouchableOpacity>
@@ -382,6 +594,12 @@ export default function BillingPage() {
                       </View>
 
                       <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 4 }}>
+                        <TouchableOpacity
+                          style={[styles.iconBtn, { backgroundColor: '#dbeafe' }]}
+                          onPress={() => handleEdit(item)}
+                        >
+                          <Edit3 size={12} color="#2563eb" />
+                        </TouchableOpacity>
                         {item.status === "Belum Lunas" && (
                           <TouchableOpacity
                             style={[styles.iconBtn, { backgroundColor: '#dcfce7' }]}
@@ -411,11 +629,16 @@ export default function BillingPage() {
           </TouchableOpacity>
         </View>
 
-        <AddBillModal
-            visible={modalVisible}
-            onClose={() => setModalVisible(false)}
-            kostId={kostId}        // Kirim ID Kost
-            onSuccess={refetch}    // Kirim fungsi refresh
+        <TagihanModal
+          visible={modalVisible}
+          onClose={() => {
+            setModalVisible(false);
+            setEditingTagihan(null);
+          }}
+          kostId={kostId}
+          onSuccess={refetch}
+          editingTagihan={editingTagihan}
+          members={members}
         />
       </SafeAreaView>
   );

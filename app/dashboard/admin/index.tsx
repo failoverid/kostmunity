@@ -158,8 +158,7 @@ export default function AdminDashboardPage() {
 
   // --- USE HOOKS BARU ---
   const { members: allMembers, loading: loadingMembers } = useMembers(kostId);
-  const { tagihan, loading: loadingTagihan } = useTagihanList('kost', kostId);
-  const tagihanList = tagihan ? [tagihan] : []; // Convert single tagihan to array
+  const { tagihan: tagihanList, loading: loadingTagihan } = useTagihanList('kost', kostId);
 
   // --- STATE KOST PROFILE ---
   const [kostProfile, setKostProfile] = useState<ProfileKostType | null>(null);
