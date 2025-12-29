@@ -1,11 +1,12 @@
 import { useRouter } from "expo-router";
-import { ArrowRight, Home, Pencil, Plus, Trash2, X } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import { ArrowRight, Home, Pencil, Plus, Search, Trash2, X } from "lucide-react-native";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
   Modal,
+  Platform,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -16,101 +17,86 @@ import {
   View
 } from "react-native";
 
-// --- FIREBASE IMPORTS ---
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from "firebase/firestore";
-// Pastikan path ini sesuai dengan file firebase-clients.ts Anda
-import { db } from "../../../../lib/firebase-clients";
+// --- IMPORT SERVICES & HOOKS ---
+import { useAuth } from "../../../../contexts/AuthContext";
+import type { Ad } from "../../../../models/Ad";
+import { createAd, deleteAd, getAdsByKostId, updateAd } from "../../../../services/adsService";
 
 // ==========================================
-// 1. LOGIC DATABASE (Adapted from your snippet)
-// ==========================================
-
-// Kita menggunakan struktur 'ads' tapi untuk konteks 'services'
-export interface ServiceType {
-  id: string;
-  imageUrl: string;
-  title: string;    // Digunakan sebagai NAMA LAYANAN
-  link: string;     // Digunakan sebagai KONTAK
-  createdAt?: any;
-}
-
-// COLLECTION REF
-const servicesRef = collection(db, "ads");
-
-// CREATE
-async function createService(title: string, link: string) {
-  // Image URL di-hardcode atau bisa ditambahkan input upload jika perlu
-  const defaultImage = "https://placehold.co/100";
-  return await addDoc(servicesRef, {
-    imageUrl: defaultImage,
-    title: title, // Nama Layanan
-    link: link,   // Kontak
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-}
-
-// UPDATE
-async function updateService(id: string, data: Partial<ServiceType>) {
-  const ref = doc(db, "ads", id);
-  return await updateDoc(ref, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
-}
-
-// DELETE
-async function deleteService(id: string) {
-  const ref = doc(db, "ads", id);
-  return await deleteDoc(ref);
-}
-
-// ==========================================
-// 2. COMPONENT: ADD/EDIT MODAL
+// 1. COMPONENT: ADD/EDIT MODAL
 // ==========================================
 interface ServiceModalProps {
   visible: boolean;
   onClose: () => void;
-  editData: ServiceType | null;
+  editData: Ad | null;
+  kostId: string;
+  onSuccess: () => void;
 }
 
-const ServiceModal = ({ visible, onClose, editData }: ServiceModalProps) => {
+const ServiceModal = ({ visible, onClose, editData, kostId, onSuccess }: ServiceModalProps) => {
   const [loading, setLoading] = useState(false);
+  const [nama, setNama] = useState("");
+  const [kontak, setKontak] = useState("");
 
-  // Form State
-  const [nama, setNama] = useState("");   // Maps to title
-  const [kontak, setKontak] = useState(""); // Maps to link
-
-  useEffect(() => {
+  React.useEffect(() => {
     if (editData) {
       setNama(editData.title);
       setKontak(editData.link);
     } else {
-      setNama(""); setKontak("");
+      setNama("");
+      setKontak("");
     }
   }, [editData, visible]);
 
   const handleSubmit = async () => {
     if (!nama || !kontak) {
-      Alert.alert("Mohon Lengkapi", "Nama Layanan dan Kontak wajib diisi.");
+      if (Platform.OS === 'web') {
+        alert("Mohon lengkapi semua data");
+      } else {
+        Alert.alert("Error", "Mohon lengkapi semua data");
+      }
       return;
     }
 
     setLoading(true);
     try {
+      const defaultImage = "https://placehold.co/100";
+      
       if (editData) {
-        // MODE EDIT
-        await updateService(editData.id, { title: nama, link: kontak });
-        Alert.alert("Berhasil", "Data layanan diperbarui.");
+        await updateAd(editData.id, { 
+          title: nama, 
+          link: kontak 
+        });
+        if (Platform.OS === 'web') {
+          alert("Layanan berhasil diupdate");
+        } else {
+          Alert.alert("Berhasil", "Layanan berhasil diupdate");
+        }
       } else {
-        // MODE TAMBAH
-        await createService(nama, kontak);
-        Alert.alert("Berhasil", "Layanan baru ditambahkan.");
+        await createAd({
+          title: nama,
+          link: kontak,
+          imageUrl: defaultImage,
+          kostId: kostId,
+          isActive: true,
+          displayOrder: 0
+        });
+        if (Platform.OS === 'web') {
+          alert("Layanan berhasil ditambahkan");
+        } else {
+          Alert.alert("Berhasil", "Layanan berhasil ditambahkan");
+        }
       }
+      
+      onSuccess();
       onClose();
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Gagal", "Terjadi kesalahan sistem.");
+    } catch (error: any) {
+      console.error("Error saving service:", error);
+      if (Platform.OS === 'web') {
+        alert("Error: " + (error?.message || "Gagal menyimpan layanan"));
+      } else {
+        Alert.alert("Error", error?.message || "Gagal menyimpan layanan");
+      }
     } finally {
       setLoading(false);
     }
@@ -162,166 +148,205 @@ const ServiceModal = ({ visible, onClose, editData }: ServiceModalProps) => {
 };
 
 // ==========================================
-// 3. COMPONENT: SERVICE ROW (SESUAI GAMBAR)
+// 2. COMPONENT: SERVICE ROW
 // ==========================================
-// Menggunakan style Pill (kotak abu) untuk Nama & Kontak
 
-const ServiceRow = ({ item, onEdit, onDelete }: { item: ServiceType, onEdit: (s: ServiceType) => void, onDelete: (id: string) => void }) => {
+const ServiceRow = ({ item, onEdit, onDelete }: { item: Ad, onEdit: (s: Ad) => void, onDelete: (id: string, title: string) => void }) => {
   return (
-      <View style={styles.rowContainer}>
-
-        {/* 1. Nama (Gray Pill) */}
-        <View style={[styles.pillContainer, { flex: 2 }]}>
-          <Text style={styles.pillText} numberOfLines={1}>{item.title}</Text>
-        </View>
-
-        {/* 2. Kontak (Gray Pill) */}
-        <View style={[styles.pillContainer, { flex: 2 }]}>
-          <Text style={styles.pillText} numberOfLines={1}>{item.link}</Text>
-        </View>
-
-        {/* 3. Actions (Icons) */}
-        <View style={styles.actionContainer}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => onEdit(item)}>
-            <Pencil size={14} color="#2563eb" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => onDelete(item.id)}>
-            <Trash2 size={14} color="#dc2626" />
-          </TouchableOpacity>
-        </View>
-
+    <View style={styles.rowContainer}>
+      <View style={[styles.pillContainer, { flex: 2 }]}>
+        <Text style={styles.pillText} numberOfLines={1}>{item.title}</Text>
       </View>
+
+      <View style={[styles.pillContainer, { flex: 2 }]}>
+        <Text style={styles.pillText} numberOfLines={1}>{item.link}</Text>
+      </View>
+
+      <View style={styles.actionContainer}>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => onEdit(item)}>
+          <Pencil size={14} color="#2563eb" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => onDelete(item.id, item.title)}>
+          <Trash2 size={14} color="#dc2626" />
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 };
 
 // ==========================================
-// 4. MAIN PAGE
+// 3. MAIN PAGE
 // ==========================================
 
 export default function ServicesPage() {
   const router = useRouter();
-  const [services, setServices] = useState<ServiceType[]>([]);
+  const { user } = useAuth();
+  
+  const kostId = user?.kostId || "kost_kurnia_01";
+  
+  const [services, setServices] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Modal State
   const [modalVisible, setModalVisible] = useState(false);
-  const [editingService, setEditingService] = useState<ServiceType | null>(null);
+  const [editingService, setEditingService] = useState<Ad | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // FETCH DATA REALTIME
-  useEffect(() => {
-    // Query ke collection "ads" (sesuai request database Anda)
-    const q = query(servicesRef, orderBy("createdAt", "desc"));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const loaded: ServiceType[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        loaded.push({
-          id: doc.id,
-          title: data.title || "",
-          link: data.link || "",
-          imageUrl: data.imageUrl || ""
-        } as ServiceType);
-      });
-      setServices(loaded);
-      setLoading(false);
-    }, (error) => {
+  // Fetch data
+  const fetchServices = async () => {
+    setLoading(true);
+    try {
+      const data = await getAdsByKostId(kostId);
+      setServices(data);
+    } catch (error) {
       console.error("Error fetching services:", error);
+    } finally {
       setLoading(false);
-    });
+    }
+  };
 
-    return () => unsubscribe();
-  }, []);
+  React.useEffect(() => {
+    fetchServices();
+  }, [kostId]);
 
-  // Handlers
+  // Filter services based on search
+  const filteredServices = services.filter(service => 
+    service.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    service.link.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   const handleAdd = () => {
     setEditingService(null);
     setModalVisible(true);
   };
 
-  const handleEdit = (item: ServiceType) => {
+  const handleEdit = (item: Ad) => {
     setEditingService(item);
     setModalVisible(true);
   };
 
-  const handleDelete = (id: string) => {
-    Alert.alert("Hapus Layanan", "Apakah Anda yakin ingin menghapus layanan ini?", [
-      { text: "Batal", style: "cancel" },
-      { text: "Hapus", style: "destructive", onPress: () => deleteService(id) }
-    ]);
+  const handleDelete = async (id: string, title: string) => {
+    const confirmDelete = Platform.OS === 'web'
+      ? window.confirm(`Yakin ingin menghapus layanan "${title}"?`)
+      : await new Promise((resolve) => {
+          Alert.alert(
+            "Hapus Layanan",
+            `Yakin ingin menghapus layanan "${title}"?`,
+            [
+              { text: "Batal", style: "cancel", onPress: () => resolve(false) },
+              { text: "Hapus", style: "destructive", onPress: () => resolve(true) }
+            ]
+          );
+        });
+
+    if (!confirmDelete) return;
+
+    try {
+      await deleteAd(id);
+      if (Platform.OS === 'web') {
+        alert("Layanan berhasil dihapus");
+      } else {
+        Alert.alert("Berhasil", "Layanan berhasil dihapus");
+      }
+      fetchServices();
+    } catch (error: any) {
+      if (Platform.OS === 'web') {
+        alert("Error: " + (error?.message || "Gagal menghapus layanan"));
+      } else {
+        Alert.alert("Error", error?.message || "Gagal menghapus layanan");
+      }
+    }
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.safeArea, { justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator size="large" color="#6366f1" />
+        <Text style={{ marginTop: 12, color: "#6b7280" }}>Memuat data layanan...</Text>
+      </View>
+    );
+  }
+
   return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" backgroundColor="#f3f4f6" />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f3f4f6" />
 
-        {/* Header */}
-        <View style={styles.header}>
-          <Image source={require("../../../../assets/kostmunity-logo.png")} style={styles.headerLogo} resizeMode="contain" />
-          <Text style={styles.headerTitle}>Kostmunity</Text>
-          <View>
-            <Text style={styles.headerSubtitleTop}>Admin</Text>
-            <Text style={styles.headerSubtitleBottom}>Dashboard</Text>
-          </View>
+      <View style={styles.header}>
+        <Image source={require("../../../../assets/kostmunity-logo.png")} style={styles.headerLogo} resizeMode="contain" />
+        <Text style={styles.headerTitle}>Kostmunity</Text>
+        <View>
+          <Text style={styles.headerSubtitleTop}>Admin</Text>
+          <Text style={styles.headerSubtitleBottom}>Dashboard</Text>
         </View>
+      </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-
-          {/* Card Container */}
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.cardTitle}>Manajemen</Text>
-                <Text style={styles.cardTitle}>Layanan</Text>
-                <Text style={styles.cardSubtitle}>Kost Kurnia</Text>
-              </View>
-              <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
-                <Plus size={14} color="#fff" style={{ marginRight: 4 }} />
-                <Text style={styles.addButtonText}>Tambah</Text>
-              </TouchableOpacity>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View>
+              <Text style={styles.cardTitle}>Manajemen Layanan</Text>
+              <Text style={styles.cardSubtitle}>Total: {services.length} layanan</Text>
             </View>
+            <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
+              <Plus size={14} color="#fff" style={{ marginRight: 4 }} />
+              <Text style={styles.addButtonText}>Tambah</Text>
+            </TouchableOpacity>
+          </View>
 
-            {/* Table Content */}
-            <View style={styles.cardContent}>
-
-              {/* Table Header - Sesuai Gambar */}
-              <View style={styles.tableHeader}>
-                <Text style={[styles.headText, { flex: 2, textAlign: 'center' }]}>Nama</Text>
-                <Text style={[styles.headText, { flex: 2, textAlign: 'center' }]}>Kontak</Text>
-                <Text style={[styles.headText, { flex: 1, textAlign: 'center' }]}>Edit</Text>
-              </View>
-
-              <View style={styles.separator} />
-
-              {/* List Body */}
-              {loading ? (
-                  <ActivityIndicator style={{ margin: 20 }} color="#333" />
-              ) : services.length === 0 ? (
-                  <Text style={{ textAlign: 'center', color: '#999', margin: 20 }}>Belum ada layanan.</Text>
-              ) : (
-                  <View style={{ gap: 8 }}>
-                    {services.map((item) => (
-                        <ServiceRow key={item.id} item={item} onEdit={handleEdit} onDelete={handleDelete} />
-                    ))}
-                  </View>
-              )}
-
+          <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f9fafb", borderRadius: 8, paddingHorizontal: 12 }}>
+              <Search size={18} color="#6b7280" />
+              <TextInput
+                style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 12, color: "#111827" }}
+                placeholder="Cari nama layanan, kontak..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
             </View>
           </View>
-        </ScrollView>
 
-        {/* FAB Home */}
-        <View style={styles.fabContainer}>
-          <TouchableOpacity style={styles.fabButton} onPress={() => router.replace("/dashboard/admin")}>
-            <Home size={20} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={styles.fabText}>Home</Text>
-          </TouchableOpacity>
+          <View style={styles.cardContent}>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.headText, { flex: 2, textAlign: 'center' }]}>Nama</Text>
+              <Text style={[styles.headText, { flex: 2, textAlign: 'center' }]}>Kontak</Text>
+              <Text style={[styles.headText, { flex: 1, textAlign: 'center' }]}>Aksi</Text>
+            </View>
+
+            <View style={styles.separator} />
+
+            {filteredServices.length === 0 ? (
+              <View style={{ padding: 40, alignItems: "center" }}>
+                <Text style={{ color: "#6b7280", fontSize: 16 }}>
+                  {searchQuery ? "Tidak ada layanan ditemukan" : "Belum ada layanan"}
+                </Text>
+              </View>
+            ) : (
+              <View style={{ gap: 8 }}>
+                {filteredServices.map((item) => (
+                  <ServiceRow key={item.id} item={item} onEdit={handleEdit} onDelete={handleDelete} />
+                ))}
+              </View>
+            )}
+          </View>
         </View>
+      </ScrollView>
 
-        {/* Modal Form */}
-        <ServiceModal visible={modalVisible} onClose={() => setModalVisible(false)} editData={editingService} />
+      <View style={styles.fabContainer}>
+        <TouchableOpacity style={styles.fabButton} onPress={() => router.replace("/dashboard/admin")}>
+          <Home size={20} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.fabText}>Home</Text>
+        </TouchableOpacity>
+      </View>
 
-      </SafeAreaView>
+      <ServiceModal 
+        visible={modalVisible} 
+        onClose={() => {
+          setModalVisible(false);
+          setEditingService(null);
+        }} 
+        editData={editingService}
+        kostId={kostId}
+        onSuccess={fetchServices}
+      />
+    </SafeAreaView>
   );
 }
 

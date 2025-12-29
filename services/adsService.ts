@@ -52,12 +52,44 @@ export async function getAllAds(): Promise<Ad[]> {
 /**
  * Get active ads only
  */
-export async function getActiveAds(): Promise<Ad[]> {
+export async function getActiveAds(kostId?: string): Promise<Ad[]> {
+  try {
+    let q;
+    if (kostId) {
+      q = query(
+        collection(db, COLLECTION_NAME),
+        where('kostId', '==', kostId),
+        where('isActive', '==', true),
+        orderBy('displayOrder', 'asc'),
+        orderBy('createdAt', 'desc')
+      );
+    } else {
+      q = query(
+        collection(db, COLLECTION_NAME),
+        where('isActive', '==', true),
+        orderBy('displayOrder', 'asc'),
+        orderBy('createdAt', 'desc')
+      );
+    }
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Ad));
+  } catch (error) {
+    console.error('Error getting active ads:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get ads by kost ID
+ */
+export async function getAdsByKostId(kostId: string): Promise<Ad[]> {
   try {
     const q = query(
       collection(db, COLLECTION_NAME),
-      where('isActive', '==', true),
-      orderBy('displayOrder', 'asc'),
+      where('kostId', '==', kostId),
       orderBy('createdAt', 'desc')
     );
     const querySnapshot = await getDocs(q);
@@ -66,7 +98,7 @@ export async function getActiveAds(): Promise<Ad[]> {
       ...doc.data()
     } as Ad));
   } catch (error) {
-    console.error('Error getting active ads:', error);
+    console.error('Error getting ads by kost:', error);
     throw error;
   }
 }
