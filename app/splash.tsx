@@ -1,9 +1,9 @@
-import { useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { auth, db } from '@/lib/firebase-clients';
 import { useRouter } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '@/lib/firebase-clients';
 import { doc, getDoc } from 'firebase/firestore';
+import { useEffect } from 'react';
+import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 
 export default function SplashScreen() {
   const router = useRouter();
@@ -22,10 +22,12 @@ export default function SplashScreen() {
             const userDoc = await getDoc(doc(db, 'users', user.uid));
             if (userDoc.exists()) {
               const userData = userDoc.data();
-              if (userData.role === 'admin') {
+              if (userData.role === 'admin' || userData.role === 'owner') {
                 router.replace('/dashboard/admin');
-              } else {
+              } else if (userData.role === 'member' || userData.role === 'user') {
                 router.replace('/dashboard/member');
+              } else {
+                router.replace('/landing');
               }
             } else {
               // User ada di auth tapi tidak ada di database
@@ -49,10 +51,17 @@ export default function SplashScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.logo}>🏠</Text>
+      <View style={styles.logoContainer}>
+        <Image 
+          source={require('../assets/kostmunity-logo.png')} 
+          style={styles.logo}
+          resizeMode="contain"
+        />
+      </View>
       <Text style={styles.title}>Kostmunity</Text>
       <Text style={styles.subtitle}>Kelola Kost Anda dengan Mudah</Text>
-      <ActivityIndicator size="large" color="#3498db" style={styles.loader} />
+      <ActivityIndicator size="large" color="#C6F432" style={styles.loader} />
+      <Text style={styles.version}>Version 1.0.0</Text>
     </View>
   );
 }
@@ -62,24 +71,48 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#181A20',
+  },
+  logoContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 30,
+    backgroundColor: '#262A34',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    shadowColor: '#C6F432',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
   logo: {
-    fontSize: 80,
-    marginBottom: 20,
+    width: 80,
+    height: 80,
+    tintColor: '#C6F432',
   },
   title: {
-    fontSize: 36,
+    fontSize: 42,
     fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 10,
+    color: '#FFFFFF',
+    marginBottom: 8,
+    letterSpacing: 1,
   },
   subtitle: {
     fontSize: 16,
-    color: '#7f8c8d',
+    color: '#9E9E9E',
     marginBottom: 40,
+    textAlign: 'center',
+    paddingHorizontal: 40,
   },
   loader: {
     marginTop: 20,
+  },
+  version: {
+    position: 'absolute',
+    bottom: 40,
+    fontSize: 12,
+    color: '#555',
   },
 });

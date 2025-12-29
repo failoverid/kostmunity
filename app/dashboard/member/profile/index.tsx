@@ -134,7 +134,7 @@ export default function ProfilePage() {
 
         try {
             await signOut();
-            router.replace("/(auth)/onboarding");
+            router.replace("/landing");
         } catch (error) {
             Alert.alert("Error", "Gagal sign out");
         }

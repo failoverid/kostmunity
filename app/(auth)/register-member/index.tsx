@@ -6,6 +6,7 @@ import { useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Image,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
@@ -90,21 +91,8 @@ export default function RegisterMemberPage() {
         status: 'active', // Activate member
       });
       
-      // Tunggu sebentar untuk memastikan data tersimpan
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      Alert.alert(
-        'Pendaftaran Berhasil!',
-        `Selamat datang ${memberData.name}! Akun Anda telah aktif.\n\nKamar: ${memberData.room}`,
-        [{ 
-          text: 'Lanjutkan', 
-          onPress: () => {
-            // User sudah otomatis login dari createUserWithEmailAndPassword
-            // Langsung redirect ke dashboard member
-            router.replace('/dashboard/member');
-          }
-        }]
-      );
+      // Langsung redirect ke dashboard member
+      router.replace('/dashboard/member');
     } catch (error: any) {
       console.error('Register error:', error);
       if (error.code === 'auth/email-already-in-use') {
@@ -124,98 +112,101 @@ export default function RegisterMemberPage() {
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.icon}>📝</Text>
-          <Text style={styles.title}>Daftar Member</Text>
-          <Text style={styles.subtitle}>Email harus sudah terdaftar oleh admin kost</Text>
-        </View>
+        <View style={styles.mainContent}>
+          {/* HEADER */}
+          <View style={styles.headerContainer}>
+            <Text style={styles.title}>Daftar Member</Text>
+            <Text style={styles.subtitle}>
+              Email harus sudah terdaftar oleh admin kost terlebih dahulu
+            </Text>
+          </View>
 
-        <View style={styles.form}>
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Nama Lengkap</Text>
+          {/* FORM */}
+          <View style={styles.formContainer}>
             <TextInput
               style={styles.input}
-              placeholder="John Doe"
+              placeholder="Nama Lengkap"
               value={name}
               onChangeText={setName}
               editable={!loading}
+              placeholderTextColor="#9ca3af"
             />
-          </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email</Text>
             <TextInput
               style={styles.input}
-              placeholder="nama@email.com"
+              placeholder="Email (yang sudah didaftarkan admin)"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
               editable={!loading}
+              placeholderTextColor="#9ca3af"
             />
-          </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
             <View style={styles.passwordContainer}>
               <TextInput
                 style={styles.passwordInput}
-                placeholder="Minimal 6 karakter"
+                placeholder="Password (minimal 6 karakter)"
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
                 editable={!loading}
+                placeholderTextColor="#9ca3af"
               />
               <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
                 style={styles.eyeIcon}
               >
                 {showPassword ? (
-                  <EyeOff size={20} color="#7f8c8d" />
+                  <EyeOff size={20} color="#9ca3af" />
                 ) : (
-                  <Eye size={20} color="#7f8c8d" />
+                  <Eye size={20} color="#9ca3af" />
                 )}
               </TouchableOpacity>
             </View>
-          </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Konfirmasi Password</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ulangi password"
+              placeholder="Konfirmasi Password"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry={true}
               editable={!loading}
+              placeholderTextColor="#9ca3af"
             />
           </View>
 
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleRegister}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text style={styles.buttonText}>Daftar Sekarang</Text>
-            )}
-          </TouchableOpacity>
-
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Sudah punya akun? </Text>
-            <TouchableOpacity onPress={() => router.push('/(auth)/login-member')}>
-              <Text style={styles.link}>Login</Text>
+          {/* ACTIONS */}
+          <View style={styles.actionContainer}>
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              onPress={handleRegister}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Daftar Sekarang</Text>
+              )}
             </TouchableOpacity>
-          </View>
 
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.backText}>← Kembali</Text>
-          </TouchableOpacity>
+            <View style={styles.footerLinks}>
+              <Text style={styles.footerText}>Sudah punya akun? </Text>
+              <TouchableOpacity onPress={() => router.push('/landing')}>
+                <Text style={styles.link}>Login</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* FOOTER */}
+        <View style={styles.footer}>
+          <Image
+            source={require("../../../assets/kostmunity-logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <Text style={styles.brandText}>kostmunity.</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -223,110 +214,68 @@ export default function RegisterMemberPage() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1, backgroundColor: "#FDF9ED" },
+  scrollContent: { flexGrow: 1, padding: 32, justifyContent: "space-between" },
+  mainContent: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    justifyContent: "center",
+    width: "100%",
+    maxWidth: 400,
+    alignSelf: "center",
   },
-  scrollContent: {
-    flexGrow: 1,
-    padding: 20,
-    justifyContent: 'center',
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  icon: {
-    fontSize: 60,
-    marginBottom: 15,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    textAlign: 'center',
-  },
-  form: {
-    backgroundColor: '#ffffff',
-    borderRadius: 15,
-    padding: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 8,
-  },
+  headerContainer: { marginBottom: 32 },
+  title: { fontSize: 36, fontWeight: "bold", marginBottom: 8, color: "#1f2937" },
+  subtitle: { color: "#4b5563", fontSize: 14 },
+  formContainer: { marginBottom: 16 },
   input: {
+    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: '#dfe6e9',
-    borderRadius: 10,
-    padding: 15,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    padding: 16,
     fontSize: 16,
-    backgroundColor: '#f8f9fa',
+    color: "#1f2937",
+    marginBottom: 16,
   },
   passwordContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: '#dfe6e9',
-    borderRadius: 10,
-    backgroundColor: '#f8f9fa',
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    marginBottom: 16,
   },
   passwordInput: {
     flex: 1,
-    padding: 15,
-    fontSize: 16,
-  },
-  eyeIcon: {
-    padding: 15,
-  },
-  button: {
-    backgroundColor: '#3498db',
     padding: 16,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  buttonDisabled: {
-    backgroundColor: '#95a5a6',
-  },
-  buttonText: {
-    color: '#ffffff',
     fontSize: 16,
-    fontWeight: 'bold',
+    color: "#1f2937",
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 20,
+  eyeIcon: { padding: 16 },
+  actionContainer: { marginTop: 32 },
+  primaryButton: {
+    width: "100%",
+    borderRadius: 999,
+    backgroundColor: "#C7C6B8",
+    paddingVertical: 16,
+    alignItems: "center",
   },
-  footerText: {
-    color: '#7f8c8d',
+  buttonDisabled: { opacity: 0.6 },
+  primaryButtonText: { fontSize: 16, fontWeight: "600", color: "#4b5563" },
+  footerLinks: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 16,
   },
-  link: {
-    color: '#3498db',
-    fontWeight: 'bold',
-  },
-  backButton: {
-    marginTop: 15,
-    alignItems: 'center',
-  },
-  backText: {
-    color: '#7f8c8d',
-    fontSize: 14,
+  footerText: { fontSize: 14, color: "#4b5563" },
+  link: { fontSize: 14, fontWeight: "600", color: "#3498db" },
+  footer: { alignItems: "center", justifyContent: "center", paddingTop: 32 },
+  logo: { width: 50, height: 50 },
+  brandText: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1f2937",
+    marginTop: 8,
   },
 });
