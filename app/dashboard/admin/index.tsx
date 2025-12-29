@@ -154,11 +154,11 @@ export default function AdminDashboardPage() {
     }
   }, [user]);
 
-  const kostId = user?.kostId || "kost_kurnia_01";
+  const kostId = user?.kostId;
 
   // --- USE HOOKS BARU ---
-  const { members: allMembers, loading: loadingMembers } = useMembers(kostId);
-  const { tagihan: tagihanList, loading: loadingTagihan } = useTagihanList('kost', kostId);
+  const { members: allMembers, loading: loadingMembers } = useMembers(kostId || "");
+  const { tagihan: tagihanList, loading: loadingTagihan } = useTagihanList('kost', kostId || "");
 
   // --- STATE KOST PROFILE ---
   const [kostProfile, setKostProfile] = useState<ProfileKostType | null>(null);

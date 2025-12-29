@@ -71,7 +71,12 @@ const MemberModal = ({ visible, onClose, editData, onSuccess }: MemberModalProps
       return;
     }
 
-    const kostId = user?.kostId || "kost_kurnia_01"; // Fallback for development
+    const kostId = user?.kostId;
+
+    if (!kostId) {
+      Alert.alert("Error", "Kost ID tidak ditemukan. Silakan login ulang.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -186,10 +191,10 @@ export default function MembersPage() {
   const router = useRouter();
   const { user } = useAuth();
   
-  const kostId = user?.kostId || "kost_kurnia_01"; // Fallback for development
+  const kostId = user?.kostId;
   
   // GUNAKAN HOOKS BARU
-  const { members, loading, error, refetch } = useMembers(kostId);
+  const { members, loading, error, refetch } = useMembers(kostId || "");
   
   const [modalVisible, setModalVisible] = useState(false);
   const [editingMember, setEditingMember] = useState<any | null>(null);

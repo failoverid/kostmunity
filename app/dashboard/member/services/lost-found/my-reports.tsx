@@ -88,9 +88,15 @@ export default function MyReportsPage() {
 
         setLoading(true);
         try {
-            let imageUrl = "";
+            let imageUrl: string | undefined = undefined;
+            // Image is optional - only upload if provided
             if (imageUri) {
-                imageUrl = await uploadImage(imageUri);
+                try {
+                    imageUrl = await uploadImage(imageUri);
+                } catch (error) {
+                    console.log("Upload image failed, continuing without image");
+                    // Continue without image if upload fails
+                }
             }
 
             await createLostItem({
@@ -198,7 +204,7 @@ export default function MyReportsPage() {
                                 ) : (
                                     <View style={styles.uploadBox}>
                                         <ImageIcon size={40} color="rgba(0,0,0,0.3)" />
-                                        <Text style={styles.uploadText}>Upload Foto Barang</Text>
+                                        <Text style={styles.uploadText}>Upload Foto Barang (Opsional)</Text>
                                     </View>
                                 )}
                             </TouchableOpacity>

@@ -18,82 +18,49 @@ import {
     View
 } from "react-native";
 
-// --- FIREBASE IMPORTS ---
-import { collection, doc, onSnapshot, orderBy, query, setDoc, updateDoc } from "firebase/firestore";
+// --- FIREBASE IMPORTS & SERVICES ---
+import { doc, getDoc } from "firebase/firestore";
 import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
+import { useAuth } from "../../../../contexts/AuthContext";
 import { db } from "../../../../lib/firebase-clients";
+import {
+    createLostItem,
+    getLostItemsByKostId,
+    LostItem,
+    LostItemCreateInput,
+    markItemAsFound
+} from "../../../../services/lostFoundService";
 
 // ==========================================
-// 1. LOGIC DATABASE & HELPER
+// 1. HELPER FUNCTIONS
 // ==========================================
 
-export interface LostItemDB {
-  itemId: string;
-  item: string;
-  memberId: string;
-  type: "lost";
-  found: boolean;    // true = Ditemukan, false = Kehilangan
-  reportedAt: any;
-  photoURL?: string;
-  description?: string; // Info Kontak
-  location?: string;
-}
-
-// Fungsi Tambah Barang
-async function reportLostItem(
-  itemName: string,
-  memberId: string,
-  fileUri?: string,
-  description?: string,
-  location?: string,
-  statusFound?: boolean
-): Promise<void> {
-  const itemId = `${memberId}_${Date.now()}`;
-  let photoURL: string | undefined;
-
-  // Upload foto kalau ada
-  if (fileUri) {
-    try {
-      console.log("Memulai upload gambar...");
-      const storage = getStorage(); // Pastikan storageBucket ada di firebaseConfig
-      const storageRef = ref(storage, `lostItems/${itemId}.jpg`);
-
-      // Fetch blob dari URI
-      const response = await fetch(fileUri);
-      const blob = await response.blob();
-
-      await uploadBytes(storageRef, blob);
-      photoURL = await getDownloadURL(storageRef);
-      console.log("Upload gambar berhasil, URL:", photoURL);
-    } catch (err: any) {
-      console.error("Gagal upload gambar:", err);
-      // Kita throw error agar user tahu, atau bisa di-comment throw-nya jika ingin lanjut tanpa gambar
-      throw new Error(`Gagal upload gambar: ${err.message}. Pastikan Storage aktif di Firebase Console.`);
-    }
-  }
-
-  const itemData = {
-    item: itemName,
-    memberId,
-    type: "lost",
-    found: statusFound || false,
-    reportedAt: new Date(),
-    photoURL: photoURL || null,
-    description,
-    location,
-    itemId,
-  };
-
-  console.log("Menyimpan data ke Firestore...", itemData);
-  await setDoc(doc(db, "lostItems", itemId), itemData);
-}
-
-// Fungsi Update Status Jadi Ditemukan
-async function markAsFound(itemId: string) {
+// Upload image to Firebase Storage
+async function uploadImage(fileUri: string, kostId: string): Promise<string> {
   try {
-    await updateDoc(doc(db, "lostItems", itemId), {
-      found: true
-    });
+    console.log("Memulai upload gambar...");
+    const storage = getStorage();
+    const itemId = `${kostId}_${Date.now()}`;
+    const storageRef = ref(storage, `lostItems/${itemId}.jpg`);
+
+    const response = await fetch(fileUri);
+    const blob = await response.blob();
+
+    await uploadBytes(storageRef, blob);
+    const photoURL = await getDownloadURL(storageRef);
+    console.log("Upload gambar berhasil, URL:", photoURL);
+    return photoURL;
+  } catch (err: any) {
+    console.error("Gagal upload gambar:", err);
+    throw new Error(`Gagal upload gambar: ${err.message}. Pastikan Storage aktif di Firebase Console.`);
+  }
+}
+
+// Handle mark item as found
+async function handleMarkAsFound(itemId: string, userId: string, userName: string) {
+  try {
+    console.log("Marking item as found:", itemId, userId, userName);
+    await markItemAsFound(itemId, userId, userName);
     Alert.alert("Sukses", "Status berhasil diubah menjadi Ditemukan.");
   } catch (error) {
     console.error("Error updating status:", error);
@@ -117,18 +84,21 @@ const formatDate = (timestamp: any) => {
 interface AddModalProps {
   visible: boolean;
   onClose: () => void;
+  onSuccess: () => void;
+  kostId: string;
+  userId: string;
+  userName: string;
 }
 
-const AddLostItemModal = ({ visible, onClose }: AddModalProps) => {
+const AddLostItemModal = ({ visible, onClose, onSuccess, kostId, userId, userName }: AddModalProps) => {
   const [loading, setLoading] = useState(false);
   const [nama, setNama] = useState("");
-  const [status, setStatus] = useState("Kehilangan");
+  const [kategori, setKategori] = useState<'electronics' | 'clothing' | 'accessories' | 'documents' | 'other'>('other');
   const [lokasi, setLokasi] = useState("");
   const [kontak, setKontak] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
 
   const pickImage = async () => {
-    // Request permission (biasanya otomatis di Expo modern, tapi aman ditambah)
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permissionResult.granted === false) {
       Alert.alert("Izin Ditolak", "Anda perlu mengizinkan akses galeri untuk upload foto.");
@@ -148,31 +118,49 @@ const AddLostItemModal = ({ visible, onClose }: AddModalProps) => {
   };
 
   const handleSubmit = async () => {
-    console.log("Tombol Kirim Ditekan"); // Debugging
+    console.log("Tombol Kirim Ditekan");
 
-    if (!nama || !lokasi) {
-      Alert.alert("Mohon Lengkapi", "Nama barang dan lokasi wajib diisi.");
+    if (!nama || !lokasi || !kontak) {
+      Alert.alert("Mohon Lengkapi", "Nama barang, lokasi, dan info kontak wajib diisi.");
       return;
     }
 
     setLoading(true);
     try {
-      const isFound = status.toLowerCase().includes("ditemukan");
+      // Image is optional - only upload if provided
+      let photoURL: string | undefined;
+      if (imageUri) {
+        try {
+          photoURL = await uploadImage(imageUri, kostId);
+        } catch (error) {
+          console.log("Upload image failed, continuing without image");
+          // Continue without image if upload fails
+        }
+      }
 
-      // Panggil fungsi create
-      await reportLostItem(
-        nama,
-        "Admin", // Bisa diganti dengan ID user yang login
-        imageUri || undefined,
-        kontak,
-        lokasi,
-        isFound
-      );
+      // Create lost item data
+      const itemData: LostItemCreateInput = {
+        kostId,
+        reporterId: userId,
+        reporterName: userName,
+        itemName: nama,
+        description: `Kontak: ${kontak}`,
+        category: kategori,
+        location: lokasi,
+        contactInfo: kontak,
+        imageUrl: photoURL,
+      };
 
+      await createLostItem(itemData);
       Alert.alert("Berhasil", "Laporan berhasil dibuat!");
 
       // Reset Form
-      setNama(""); setLokasi(""); setKontak(""); setImageUri(null);
+      setNama(""); 
+      setLokasi(""); 
+      setKontak(""); 
+      setImageUri(null);
+      setKategori('other');
+      onSuccess();
       onClose();
     } catch (error: any) {
       console.error("Submit Error:", error);
@@ -209,13 +197,6 @@ const AddLostItemModal = ({ visible, onClose }: AddModalProps) => {
               />
               <TextInput
                 style={modalStyles.input}
-                placeholder="Status (Kehilangan / Ditemukan)"
-                placeholderTextColor="#A0A090"
-                value={status}
-                onChangeText={setStatus}
-              />
-              <TextInput
-                style={modalStyles.input}
                 placeholder="Lokasi Terakhir"
                 placeholderTextColor="#A0A090"
                 value={lokasi}
@@ -223,7 +204,7 @@ const AddLostItemModal = ({ visible, onClose }: AddModalProps) => {
               />
               <TextInput
                 style={modalStyles.input}
-                placeholder="Info Kontak"
+                placeholder="Info Kontak (No HP/Email)"
                 placeholderTextColor="#A0A090"
                 value={kontak}
                 onChangeText={setKontak}
@@ -235,7 +216,7 @@ const AddLostItemModal = ({ visible, onClose }: AddModalProps) => {
                 ) : (
                   <>
                     <ImageIcon size={32} color="#A0A090" />
-                    <Text style={modalStyles.uploadText}>Upload Foto Barang</Text>
+                    <Text style={modalStyles.uploadText}>Upload Foto Barang (Opsional)</Text>
                     <View style={modalStyles.badgePill}><Text style={modalStyles.badgeText}>Pilih Foto</Text></View>
                   </>
                 )}
@@ -269,8 +250,20 @@ const AddLostItemModal = ({ visible, onClose }: AddModalProps) => {
 // 3. COMPONENT: LIST ITEM CARD
 // ==========================================
 
-const LostItemCard = ({ item, onMarkFound }: { item: LostItemDB, onMarkFound: (id: string) => void }) => {
-  const isFound = item.found;
+const LostItemCard = ({ 
+  item, 
+  onMarkFound 
+}: { 
+  item: LostItem, 
+  onMarkFound: (id: string) => void 
+}) => {
+  const isFound = item.status === 'found' || item.status === 'returned';
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("id-ID", {
+      day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit'
+    });
+  };
 
   return (
     <View style={styles.card}>
@@ -278,8 +271,8 @@ const LostItemCard = ({ item, onMarkFound }: { item: LostItemDB, onMarkFound: (i
 
         {/* Kolom Kiri: Gambar */}
         <View style={styles.imageContainer}>
-          {item.photoURL ? (
-            <Image source={{ uri: item.photoURL }} style={styles.cardImage} resizeMode="cover" />
+          {item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.cardImage} resizeMode="cover" />
           ) : (
             <View style={styles.placeholderImage}>
               <ImageIcon size={32} color="#9ca3af" />
@@ -296,14 +289,17 @@ const LostItemCard = ({ item, onMarkFound }: { item: LostItemDB, onMarkFound: (i
               <MapPin size={10} color="#525252" style={{marginRight:2}} />
               <Text style={styles.locationText} numberOfLines={1}>{item.location || "Lokasi tidak diketahui"}</Text>
             </View>
-            <Text style={styles.dateText}>{formatDate(item.reportedAt)}</Text>
+            <Text style={styles.dateText}>{formatDate(item.dateReported)}</Text>
           </View>
 
           {/* Isi Konten */}
           <View style={{ gap: 4, marginBottom: 8 }}>
-            <Text style={styles.itemTitle}>{item.item}</Text>
+            <Text style={styles.itemTitle}>{item.itemName}</Text>
             <Text style={styles.contactText}>
-              {item.description ? `Kontak: ${item.description}` : "Tidak ada info kontak"}
+              Pelapor: {item.reporterName}
+            </Text>
+            <Text style={styles.contactText}>
+              {item.contactInfo ? `Kontak: ${item.contactInfo}` : "Tidak ada info kontak"}
             </Text>
           </View>
 
@@ -317,7 +313,7 @@ const LostItemCard = ({ item, onMarkFound }: { item: LostItemDB, onMarkFound: (i
             ) : (
                 <TouchableOpacity
                     style={[styles.btnAction, styles.btnDark]}
-                    onPress={() => onMarkFound(item.itemId)}
+                    onPress={() => onMarkFound(item.id)}
                 >
                   <Text style={styles.textBtnDark}>Tandai Ditemukan</Text>
                 </TouchableOpacity>
@@ -336,33 +332,103 @@ const LostItemCard = ({ item, onMarkFound }: { item: LostItemDB, onMarkFound: (i
 
 export default function LostFoundPage() {
   const router = useRouter();
-  const [items, setItems] = useState<LostItemDB[]>([]);
+  const { user } = useAuth();
+  const [items, setItems] = useState<LostItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+  const [kostName, setKostName] = useState<string>("");
+
+  // Fetch kost profile to get kost name
+  useEffect(() => {
+    const fetchKostProfile = async () => {
+      if (!user?.kostId) return;
+      try {
+        const kostDoc = await getDoc(doc(db, "profileKost", user.kostId));
+        if (kostDoc.exists()) {
+          setKostName(kostDoc.data()?.name || "Kost");
+        }
+      } catch (error) {
+        console.error("Error fetching kost profile:", error);
+      }
+    };
+    fetchKostProfile();
+  }, [user?.kostId]);
+
+  const fetchItems = async () => {
+    if (!user?.kostId) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const data = await getLostItemsByKostId(user.kostId);
+      setItems(data);
+    } catch (error) {
+      console.error("Error fetching lost items:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Query items
-    const q = query(collection(db, "lostItems"), orderBy("reportedAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const loaded: LostItemDB[] = [];
-      snapshot.forEach((doc) => {
-        loaded.push(doc.data() as LostItemDB);
-      });
-      setItems(loaded);
-      setLoading(false);
-    }, (error) => {
-        console.error("Snapshot Error:", error);
-        setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    fetchItems();
+  }, [user?.kostId]);
 
-  const handleMarkFound = (id: string) => {
-    Alert.alert("Konfirmasi", "Barang ini sudah ditemukan/dikembalikan?", [
-      { text: "Batal", style: "cancel" },
-      { text: "Ya, Ditemukan", onPress: () => markAsFound(id) }
-    ]);
+  const handleMarkFound = (itemId: string) => {
+    console.log("handleMarkFound called with itemId:", itemId);
+    if (!user?.uid || !user?.nama) {
+      console.error("User data missing:", { uid: user?.uid, nama: user?.nama });
+      Alert.alert("Error", "User information tidak tersedia");
+      return;
+    }
+    
+    // For web, use window.confirm instead of Alert
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm("Barang ini sudah ditemukan/dikembalikan?");
+      if (confirmed) {
+        (async () => {
+          try {
+            console.log("Starting mark as found process...");
+            await handleMarkAsFound(itemId, user.uid, user.nama);
+            console.log("Mark as found successful, refreshing list...");
+            await fetchItems();
+            console.log("List refreshed");
+          } catch (error) {
+            console.error("Error in handleMarkFound:", error);
+            Alert.alert("Error", "Terjadi kesalahan saat mengupdate status");
+          }
+        })();
+      }
+    } else {
+      Alert.alert("Konfirmasi", "Barang ini sudah ditemukan/dikembalikan?", [
+        { text: "Batal", style: "cancel" },
+        { 
+          text: "Ya, Ditemukan", 
+          onPress: async () => {
+            try {
+              console.log("Starting mark as found process...");
+              await handleMarkAsFound(itemId, user.uid, user.nama);
+              console.log("Mark as found successful, refreshing list...");
+              await fetchItems();
+              console.log("List refreshed");
+            } catch (error) {
+              console.error("Error in handleMarkFound:", error);
+              Alert.alert("Error", "Terjadi kesalahan saat mengupdate status");
+            }
+          }
+        }
+      ]);
+    }
   };
+
+  if (!user?.kostId) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Text style={{color: '#fff', textAlign: 'center', marginTop: 20}}>
+          KostId tidak ditemukan. Silakan login ulang.
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -388,7 +454,7 @@ export default function LostFoundPage() {
         <View style={styles.pageTitleContainer}>
           <View>
             <Text style={styles.pageTitle}>Lost and Found</Text>
-            <Text style={styles.pageSubtitle}>Kost Kurnia</Text>
+            <Text style={styles.pageSubtitle}>{kostName || 'Memuat...'}</Text>
           </View>
           <TouchableOpacity style={styles.addHeaderBtn} onPress={() => setModalVisible(true)}>
             <Text style={styles.addBtnText}>+ Lapor</Text>
@@ -404,7 +470,7 @@ export default function LostFoundPage() {
           ) : (
               items.map((item) => (
                   <LostItemCard
-                      key={item.itemId}
+                      key={item.id}
                       item={item}
                       onMarkFound={handleMarkFound}
                   />
@@ -422,7 +488,14 @@ export default function LostFoundPage() {
       </View>
 
       {/* Modal Input */}
-      <AddLostItemModal visible={modalVisible} onClose={() => setModalVisible(false)} />
+      <AddLostItemModal 
+        visible={modalVisible} 
+        onClose={() => setModalVisible(false)}
+        onSuccess={fetchItems}
+        kostId={user.kostId}
+        userId={user.uid}
+        userName={user.nama}
+      />
     </SafeAreaView>
   );
 }

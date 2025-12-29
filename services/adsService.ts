@@ -1,18 +1,18 @@
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query,
-  orderBy,
-  where,
-  serverTimestamp 
-} from 'firebase/firestore';
 import { db } from '@/lib/firebase-clients';
 import { Ad, AdCreateInput, AdUpdateInput } from '@/models/Ad';
+import {
+    addDoc,
+    collection,
+    deleteDoc,
+    doc,
+    getDoc,
+    getDocs,
+    orderBy,
+    query,
+    serverTimestamp,
+    updateDoc,
+    where
+} from 'firebase/firestore';
 
 const COLLECTION_NAME = 'ads';
 

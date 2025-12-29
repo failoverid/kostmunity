@@ -1,15 +1,15 @@
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  serverTimestamp
+    addDoc,
+    collection,
+    deleteDoc,
+    doc,
+    getDoc,
+    getDocs,
+    orderBy,
+    query,
+    serverTimestamp,
+    updateDoc,
+    where
 } from 'firebase/firestore';
 import { db } from '../lib/firebase-clients';
 
@@ -137,8 +137,14 @@ export async function getLostItemsByReporterId(reporterId: string): Promise<Lost
 // Create new lost item report
 export async function createLostItem(data: LostItemCreateInput): Promise<string> {
   try {
+    // Remove undefined fields to avoid Firestore errors
+    const cleanData: any = { ...data };
+    if (cleanData.imageUrl === undefined) {
+      delete cleanData.imageUrl;
+    }
+    
     const docRef = await addDoc(collection(db, 'lostItems'), {
-      ...data,
+      ...cleanData,
       status: 'lost',
       dateReported: serverTimestamp(),
       createdAt: serverTimestamp(),
@@ -154,6 +160,7 @@ export async function createLostItem(data: LostItemCreateInput): Promise<string>
 // Update lost item
 export async function updateLostItem(id: string, data: LostItemUpdateInput): Promise<void> {
   try {
+    console.log('updateLostItem called with:', { id, data });
     const docRef = doc(db, 'lostItems', id);
     const updateData: any = {
       ...data,
@@ -165,7 +172,9 @@ export async function updateLostItem(id: string, data: LostItemUpdateInput): Pro
       updateData.foundDate = serverTimestamp();
     }
 
+    console.log('Updating document with data:', updateData);
     await updateDoc(docRef, updateData);
+    console.log('Document updated successfully');
   } catch (error) {
     console.error('Error updating lost item:', error);
     throw error;
@@ -189,11 +198,13 @@ export async function markItemAsFound(
   foundByName: string
 ): Promise<void> {
   try {
+    console.log('markItemAsFound called with:', { id, foundById, foundByName });
     await updateLostItem(id, {
       status: 'found',
       foundById,
       foundByName
     });
+    console.log('Item marked as found successfully');
   } catch (error) {
     console.error('Error marking item as found:', error);
     throw error;

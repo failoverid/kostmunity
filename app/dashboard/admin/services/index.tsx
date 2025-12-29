@@ -2,19 +2,19 @@ import { useRouter } from "expo-router";
 import { ArrowRight, Home, Pencil, Plus, Search, Trash2, X } from "lucide-react-native";
 import React, { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    Modal,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 
 // --- IMPORT SERVICES & HOOKS ---
@@ -182,7 +182,7 @@ export default function ServicesPage() {
   const router = useRouter();
   const { user } = useAuth();
   
-  const kostId = user?.kostId || "kost_kurnia_01";
+  const kostId = user?.kostId;
   
   const [services, setServices] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,6 +192,10 @@ export default function ServicesPage() {
 
   // Fetch data
   const fetchServices = async () => {
+    if (!kostId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const data = await getAdsByKostId(kostId);
