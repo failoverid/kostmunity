@@ -5,7 +5,8 @@ import {
     Home,
     LogOut,
     MapPin,
-    Pencil
+    Pencil,
+    User
 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
@@ -312,15 +313,26 @@ export default function AdminDashboardPage() {
 
         {/* 1. HEADER */}
         <View style={styles.header}>
-          <Image
-              source={require("../../../assets/kostmunity-logo.png")}
-              style={styles.headerLogo}
-              resizeMode="contain"
-          />
-          <Text style={styles.headerTitle}>Kostmunity</Text>
-          <View style={styles.headerSubtitleContainer}>
-            <Text style={styles.headerSubtitleTop}>Admin</Text>
-            <Text style={styles.headerSubtitleBottom}>Dashboard</Text>
+          <View style={{ flex: 1 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Image
+                source={require("../../../assets/kostmunity-logo.png")}
+                style={styles.headerLogo}
+                resizeMode="contain"
+            />
+            <Text style={styles.headerTitle}>Kostmunity</Text>
+            <View style={styles.headerSubtitleContainer}>
+              <Text style={styles.headerSubtitleTop}>Admin</Text>
+              <Text style={styles.headerSubtitleBottom}>Dashboard</Text>
+            </View>
+          </View>
+          <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 16 }}>
+            <TouchableOpacity 
+              onPress={() => router.push('/dashboard/admin/profile')}
+              style={styles.userButton}
+            >
+              <User size={20} color="#1f2937" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -505,6 +517,13 @@ const styles = StyleSheet.create({
   headerSubtitleContainer: { alignItems: "flex-start" },
   headerSubtitleTop: { fontSize: 14, color: "#4b5563", fontWeight: "600", marginTop: 4, lineHeight: 14 },
   headerSubtitleBottom: { fontSize: 14, color: "#1f2937", fontWeight: "bold", lineHeight: 14 },
+  userButton: { 
+    backgroundColor: "#f3f4f6", 
+    padding: 10, 
+    borderRadius: 20, 
+    borderWidth: 1, 
+    borderColor: "#e5e7eb" 
+  },
 
   card: { backgroundColor: "#fff", borderRadius: 8, elevation: 2, shadowColor: "#000", shadowOpacity: 0.05, overflow: "hidden" },
   nameCardContent: { padding: 16 },
