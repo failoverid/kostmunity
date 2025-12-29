@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Image, Modal, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../../../../../contexts/AuthContext";
-import { createFeedback, Feedback, getFeedbackByMemberId } from "../../../../../services/feedbackService";
+import { createFeedback, Feedback } from "../../../../../services/feedbackService";
 
 const COLORS = {
     background: "#181A20",
@@ -26,6 +26,8 @@ export default function FeedbackPage() {
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<"complaint" | "suggestion">("complaint");
     const [modalVisible, setModalVisible] = useState(false);
+    const [responseModalVisible, setResponseModalVisible] = useState(false);
+    const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [loading, setLoading] = useState(true);
@@ -34,19 +36,25 @@ export default function FeedbackPage() {
 
     useEffect(() => {
         loadData();
-    }, [user?.memberId]);
+    }, [user?.kostId]);
 
     const loadData = async () => {
-        if (!user?.memberId) {
-            setLoading(false);
-            return;
-        }
-
+        setLoading(true);
         try {
-            const data = await getFeedbackByMemberId(user.memberId);
+            let data: Feedback[] = [];
+            
+            // Fetch all feedback in the kost so members can see all complaints and responses
+            if (user?.kostId) {
+                console.log("Fetching all feedback by kostId:", user.kostId);
+                const { getFeedbackByKostId } = await import("../../../../../services/feedbackService");
+                data = await getFeedbackByKostId(user.kostId);
+                console.log("Found all feedback in kost:", data.length);
+            }
+            
             setFeedbacks(data);
         } catch (error) {
-            console.error(error);
+            console.error("Error loading feedback:", error);
+            setFeedbacks([]);
         } finally {
             setLoading(false);
         }
@@ -109,7 +117,13 @@ export default function FeedbackPage() {
                             </Text>
                         </View>
                         {item.response && (
-                            <TouchableOpacity style={styles.commentButton} onPress={() => Alert.alert("Tanggapan Admin", item.response)}>
+                            <TouchableOpacity 
+                                style={styles.commentButton} 
+                                onPress={() => {
+                                    setSelectedFeedback(item);
+                                    setResponseModalVisible(true);
+                                }}
+                            >
                                 <Text style={styles.commentButtonText}>Lihat Balasan</Text>
                             </TouchableOpacity>
                         )}
@@ -175,6 +189,55 @@ export default function FeedbackPage() {
                     </View>
                 </View>
             </Modal>
+
+            {/* Response Modal */}
+            <Modal animationType="fade" transparent={true} visible={responseModalVisible} onRequestClose={() => setResponseModalVisible(false)}>
+                <View style={styles.responseModalOverlay}>
+                    <View style={[styles.responseModalContent]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalBrand}>Tanggapan Admin</Text>
+                            <TouchableOpacity onPress={() => setResponseModalVisible(false)}>
+                                <View style={styles.closeButton}><X size={20} color="#FFF" /></View>
+                            </TouchableOpacity>
+                        </View>
+                        
+                        {selectedFeedback && (
+                            <ScrollView contentContainerStyle={styles.responseScroll} showsVerticalScrollIndicator={false}>
+                                <View style={styles.responseSection}>
+                                    <Text style={styles.responseSectionTitle}>Judul Aduan:</Text>
+                                    <Text style={styles.responseSectionText}>{selectedFeedback.subject}</Text>
+                                </View>
+                                
+                                <View style={styles.responseSection}>
+                                    <Text style={styles.responseSectionTitle}>Pesan Anda:</Text>
+                                    <Text style={styles.responseSectionText}>{selectedFeedback.message}</Text>
+                                </View>
+                                
+                                <View style={[styles.responseSection, { backgroundColor: 'rgba(198, 244, 50, 0.1)', padding: 16, borderRadius: 12 }]}>
+                                    <Text style={[styles.responseSectionTitle, { color: COLORS.lime }]}>Balasan Admin:</Text>
+                                    <Text style={[styles.responseSectionText, { fontSize: 16, lineHeight: 24 }]}>
+                                        {selectedFeedback.response || "Belum ada balasan"}
+                                    </Text>
+                                </View>
+                                
+                                <View style={styles.responseSection}>
+                                    <Text style={styles.responseSectionTitle}>Status:</Text>
+                                    <View style={[styles.statusBadge, {
+                                        backgroundColor: selectedFeedback.status === 'resolved' ? COLORS.statusDone :
+                                            selectedFeedback.status === 'in-progress' ? COLORS.statusProcess : COLORS.statusSent,
+                                        alignSelf: 'flex-start'
+                                    }]}>
+                                        <Text style={[styles.statusText, { color: selectedFeedback.status === 'in-progress' ? '#000' : '#FFF' }]}>
+                                            {selectedFeedback.status === 'resolved' ? 'Selesai' : selectedFeedback.status === 'in-progress' ? 'Diproses' : 'Terkirim'}
+                                        </Text>
+                                    </View>
+                                </View>
+                            </ScrollView>
+                        )}
+                    </View>
+                </View>
+            </Modal>
+
             <FloatingNavbar />
         </SafeAreaView>
     );
@@ -513,5 +576,45 @@ const styles = StyleSheet.create({
         color: "#000",
         fontWeight: "bold",
         fontSize: 16,
+    },
+
+    // Response Modal Styles
+    responseModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+
+    responseModalContent: {
+        backgroundColor: COLORS.cardPurple,
+        borderRadius: 20,
+        padding: 24,
+        width: '100%',
+        maxWidth: 500,
+        maxHeight: '80%',
+    },
+
+    responseScroll: {
+        gap: 16,
+        paddingBottom: 20,
+    },
+
+    responseSection: {
+        gap: 8,
+    },
+
+    responseSectionTitle: {
+        fontSize: 12,
+        color: COLORS.textGray,
+        fontWeight: '600',
+        textTransform: 'uppercase',
+    },
+
+    responseSectionText: {
+        fontSize: 14,
+        color: COLORS.textWhite,
+        lineHeight: 20,
     },
 });

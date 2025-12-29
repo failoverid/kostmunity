@@ -7,7 +7,7 @@ import {
     Image as ImageIcon,
     Plus, X
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator, Alert,
     Image,
@@ -23,7 +23,7 @@ import {
     View
 } from "react-native";
 import { useAuth } from "../../../../../contexts/AuthContext";
-import { createLostItem } from "../../../../../services/lostFoundService";
+import { createLostItem, getLostItemsByReporterId, LostItem } from "../../../../../services/lostFoundService";
 
 const COLORS = {
     background: "#181A20",
@@ -40,6 +40,8 @@ export default function MyReportsPage() {
     const router = useRouter();
     const { user } = useAuth();
     const [modalVisible, setModalVisible] = useState(false);
+    const [myReports, setMyReports] = useState<LostItem[]>([]);
+    const [loadingReports, setLoadingReports] = useState(true);
 
     // Form State
     const [namaBarang, setNamaBarang] = useState("");
@@ -48,6 +50,31 @@ export default function MyReportsPage() {
     const [kontak, setKontak] = useState("");
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+
+    // Fetch my reports
+    useEffect(() => {
+        fetchMyReports();
+    }, [user?.uid]);
+
+    const fetchMyReports = async () => {
+        if (!user?.uid) {
+            setLoadingReports(false);
+            return;
+        }
+        
+        setLoadingReports(true);
+        try {
+            console.log("Fetching lost items by reporterId:", user.uid);
+            const data = await getLostItemsByReporterId(user.uid);
+            console.log("Found my reports:", data.length);
+            setMyReports(data);
+        } catch (error) {
+            console.error("Error fetching my reports:", error);
+            setMyReports([]);
+        } finally {
+            setLoadingReports(false);
+        }
+    };
 
     // Fungsi Pilih Gambar
     const pickImage = async () => {
@@ -116,8 +143,8 @@ export default function MyReportsPage() {
             // Reset form
             setNamaBarang(""); setLokasi(""); setKontak(""); setImageUri(null);
 
-            // Redirect kembali ke list agar refresh
-            router.replace("/dashboard/member/services/lost-found");
+            // Refresh reports
+            await fetchMyReports();
         } catch (error) {
             Alert.alert("Error", "Gagal membuat laporan. Coba lagi.");
             console.error(error);
@@ -144,18 +171,50 @@ export default function MyReportsPage() {
                     <View style={styles.arrowCircle}><ArrowLeft size={14} color="#AAA" /></View>
                 </TouchableOpacity>
 
-                <View style={styles.emptyStateContainer}>
-                    <FileSearch size={100} color="#FFF" style={{ marginBottom: 24 }} strokeWidth={1.5} />
-                    <Text style={styles.emptyTitle}>Buat Laporan Baru</Text>
-                    <Text style={[styles.emptyTitle, { fontSize: 16, marginTop: 8, color: COLORS.textGray }]}>
-                        Barang hilang atau menemukan sesuatu?
-                    </Text>
+                {loadingReports ? (
+                    <ActivityIndicator color={COLORS.lime} size="large" style={{ marginTop: 40 }} />
+                ) : myReports.length === 0 ? (
+                    <View style={styles.emptyStateContainer}>
+                        <FileSearch size={100} color="#FFF" style={{ marginBottom: 24 }} strokeWidth={1.5} />
+                        <Text style={styles.emptyTitle}>Buat Laporan Baru</Text>
+                        <Text style={[styles.emptyTitle, { fontSize: 16, marginTop: 8, color: COLORS.textGray }]}>
+                            Barang hilang atau menemukan sesuatu?
+                        </Text>
 
-                    <TouchableOpacity style={styles.createButton} onPress={() => setModalVisible(true)}>
-                        <Text style={styles.createButtonText}>Isi Formulir</Text>
-                        <View style={styles.plusCircle}><Plus size={14} color={COLORS.lime} /></View>
-                    </TouchableOpacity>
-                </View>
+                        <TouchableOpacity style={styles.createButton} onPress={() => setModalVisible(true)}>
+                            <Text style={styles.createButtonText}>Isi Formulir</Text>
+                            <View style={styles.plusCircle}><Plus size={14} color={COLORS.lime} /></View>
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <>
+                        <Text style={styles.sectionTitle}>Laporanmu ({myReports.length})</Text>
+                        {myReports.map((item) => (
+                            <View key={item.id} style={styles.reportCard}>
+                                <View style={styles.reportHeader}>
+                                    <Text style={styles.reportName}>{item.itemName}</Text>
+                                    <View style={[styles.statusBadge, {
+                                        backgroundColor: item.status === 'found' ? '#4caf50' : '#ff9800'
+                                    }]}>
+                                        <Text style={styles.statusText}>
+                                            {item.status === 'found' ? 'Ditemukan' : 'Hilang'}
+                                        </Text>
+                                    </View>
+                                </View>
+                                <Text style={styles.reportLocation}>📍 {item.location}</Text>
+                                <Text style={styles.reportContact}>📞 {item.contactInfo}</Text>
+                                {item.imageUrl && (
+                                    <Image source={{ uri: item.imageUrl }} style={styles.reportImage} />
+                                )}
+                            </View>
+                        ))}
+                        
+                        <TouchableOpacity style={styles.createButtonBottom} onPress={() => setModalVisible(true)}>
+                            <Text style={styles.createButtonText}>Buat Laporan Baru</Text>
+                            <View style={styles.plusCircle}><Plus size={14} color={COLORS.lime} /></View>
+                        </TouchableOpacity>
+                    </>
+                )}
                 <View style={{ height: 100 }} />
             </ScrollView>
 
@@ -260,4 +319,16 @@ const styles = StyleSheet.create({
     uploadText: { color: '#FFF', fontSize: 12 },
     submitButton: { backgroundColor: COLORS.lime, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, marginTop: 16, gap: 8 },
     submitButtonText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
+    
+    // Report list styles
+    sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textWhite, marginBottom: 16 },
+    reportCard: { backgroundColor: COLORS.cardPurple, borderRadius: 16, padding: 16, marginBottom: 16 },
+    reportHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    reportName: { fontSize: 16, fontWeight: 'bold', color: COLORS.textWhite, flex: 1 },
+    statusBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
+    statusText: { fontSize: 10, fontWeight: 'bold', color: '#FFF' },
+    reportLocation: { fontSize: 14, color: '#E0E0E0', marginBottom: 4 },
+    reportContact: { fontSize: 14, color: '#E0E0E0', marginBottom: 8 },
+    reportImage: { width: '100%', height: 150, borderRadius: 12, marginTop: 8 },
+    createButtonBottom: { flexDirection: 'row', backgroundColor: '#262A34', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 16, marginBottom: 80, borderWidth: 1, borderColor: '#333' },
 });
