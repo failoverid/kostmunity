@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import { collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { auth, db } from '../lib/firebase-clients';
 
 export type UserRole = 'admin' | 'owner' | 'member' | 'user';
@@ -54,12 +54,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             if (userData.role === 'member' || userData.role === 'user') {
               // Fetch member info for additional data
-              const memberDoc = await getDoc(doc(db, 'memberInfo', firebaseUser.uid));
-              if (memberDoc.exists()) {
+              // Query by userId field instead of document ID
+              const memberQuery = query(
+                collection(db, 'memberInfo'),
+                where('userId', '==', firebaseUser.uid)
+              );
+              const memberSnapshot = await getDocs(memberQuery);
+              
+              if (!memberSnapshot.empty) {
+                const memberDoc = memberSnapshot.docs[0];
                 const memberData = memberDoc.data();
                 authUser.memberId = memberDoc.id;
-                authUser.kamar = memberData.kamar;
+                authUser.kamar = memberData.room; // Field di memberInfo adalah "room"
                 authUser.kostId = memberData.kostId;
+              } else {
+                // Fallback: Try to find by email and update userId
+                console.log('Member not found by userId, trying by email...');
+                const emailQuery = query(
+                  collection(db, 'memberInfo'),
+                  where('email', '==', firebaseUser.email)
+                );
+                const emailSnapshot = await getDocs(emailQuery);
+                
+                if (!emailSnapshot.empty) {
+                  const memberDoc = emailSnapshot.docs[0];
+                  const memberData = memberDoc.data();
+                  
+                  // Update memberInfo dengan userId
+                  console.log('Updating memberInfo with userId:', firebaseUser.uid);
+                  await updateDoc(doc(db, 'memberInfo', memberDoc.id), {
+                    userId: firebaseUser.uid
+                  });
+                  
+                  authUser.memberId = memberDoc.id;
+                  authUser.kamar = memberData.room;
+                  authUser.kostId = memberData.kostId;
+                }
               }
             }
 

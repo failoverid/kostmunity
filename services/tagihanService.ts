@@ -1,19 +1,18 @@
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where,
-  orderBy,
-  serverTimestamp,
-  Timestamp 
-} from 'firebase/firestore';
 import { db } from '@/lib/firebase-clients';
 import { Tagihan, TagihanCreateInput, TagihanUpdateInput } from '@/models/Tagihan';
+import {
+    addDoc,
+    collection,
+    deleteDoc,
+    doc,
+    getDoc,
+    getDocs,
+    orderBy,
+    query,
+    serverTimestamp,
+    updateDoc,
+    where
+} from 'firebase/firestore';
 
 const COLLECTION_NAME = 'tagihan';
 
@@ -55,18 +54,55 @@ export async function getAllTagihan(): Promise<Tagihan[]> {
  */
 export async function getTagihanByMemberId(memberId: string): Promise<Tagihan[]> {
   try {
+    console.log("getTagihanByMemberId called with memberId:", memberId);
     const q = query(
       collection(db, COLLECTION_NAME),
       where('memberId', '==', memberId),
       orderBy('createdAt', 'desc')
     );
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
+    const results = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     } as Tagihan));
+    console.log("Found tagihan by memberId:", results.length, results);
+    return results;
   } catch (error) {
     console.error('Error getting tagihan by member:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get tagihan by room number (alternative query)
+ */
+export async function getTagihanByRoom(room: string, kostId?: string): Promise<Tagihan[]> {
+  try {
+    console.log("getTagihanByRoom called with room:", room, "kostId:", kostId);
+    let q;
+    if (kostId) {
+      q = query(
+        collection(db, COLLECTION_NAME),
+        where('room', '==', room),
+        where('kostId', '==', kostId),
+        orderBy('createdAt', 'desc')
+      );
+    } else {
+      q = query(
+        collection(db, COLLECTION_NAME),
+        where('room', '==', room),
+        orderBy('createdAt', 'desc')
+      );
+    }
+    const querySnapshot = await getDocs(q);
+    const results = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Tagihan));
+    console.log("Found tagihan by room:", results.length, results);
+    return results;
+  } catch (error) {
+    console.error('Error getting tagihan by room:', error);
     throw error;
   }
 }

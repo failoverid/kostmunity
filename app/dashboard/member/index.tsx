@@ -24,9 +24,10 @@ import {
     View
 } from "react-native";
 import { useAuth } from "../../../contexts/AuthContext";
-import { useTagihanList } from "../../../hooks/useTagihan";
 import { db } from "../../../lib/firebase-clients";
 import { formatCurrency } from "../../../lib/formatting";
+import { Tagihan } from "../../../models/Tagihan";
+import { getTagihanByMemberId, getTagihanByRoom } from "../../../services/tagihanService";
 
 const COLORS = {
     background: "#181A20",
@@ -65,22 +66,41 @@ export default function MemberDashboard() {
     const router = useRouter();
     const { user } = useAuth();
 
-    const memberId = user?.memberId || user?.uid || "member_001"; // Fallback for development
+    const memberId = user?.memberId || "";
+    const kamar = user?.kamar || "";
+    const kostId = user?.kostId || "";
 
     const [memberData, setMemberData] = useState<any>(null);
+    const [tagihanList, setTagihanList] = useState<Tagihan[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadingTagihan, setLoadingTagihan] = useState(true);
 
-    // Fetch tagihan data
-    const { tagihan: tagihanList, loading: loadingTagihan } = useTagihanList('member', memberId);
+    // Debug log
+    console.log("=== MEMBER DASHBOARD DEBUG ===");
+    console.log("User:", user);
+    console.log("MemberId:", memberId);
+    console.log("Kamar:", kamar);
+    console.log("KostId:", kostId);
 
+    // Fetch member info
     useEffect(() => {
-        if (!memberId) return;
-        // Fetch member info
+        console.log("Effect running, memberId:", memberId);
+        if (!memberId) {
+            console.log("No memberId, skipping fetch");
+            setLoading(false);
+            return;
+        }
         const unsubscribe = onSnapshot(
             doc(db, "memberInfo", memberId),
             (docSnap) => {
+                console.log("Firestore snapshot - exists:", docSnap.exists());
                 if (docSnap.exists()) {
-                    setMemberData({ id: docSnap.id, ...docSnap.data() });
+                    const data = { id: docSnap.id, ...docSnap.data() };
+                    console.log("Member data from Firestore:", data);
+                    console.log("Room field:", data.room);
+                    setMemberData(data);
+                } else {
+                    console.log("Document does not exist for memberId:", memberId);
                 }
                 setLoading(false);
             },
@@ -92,8 +112,62 @@ export default function MemberDashboard() {
         return () => unsubscribe();
     }, [memberId]);
 
+    // Fetch tagihan - try by memberId first, then by room
+    useEffect(() => {
+        const fetchTagihan = async () => {
+            console.log("===== FETCHING TAGIHAN START =====");
+            setLoadingTagihan(true);
+            try {
+                let tagihan: Tagihan[] = [];
+                
+                // Try query by memberId first
+                if (memberId) {
+                    console.log("Attempting to fetch tagihan by memberId:", memberId);
+                    try {
+                        tagihan = await getTagihanByMemberId(memberId);
+                        console.log("Query by memberId result:", tagihan.length, "items found");
+                    } catch (err) {
+                        console.error("Error querying by memberId:", err);
+                    }
+                }
+                
+                // If no results and we have room and kostId, try query by room
+                if (tagihan.length === 0 && (kamar || memberData?.room)) {
+                    const room = kamar || memberData?.room;
+                    console.log("No tagihan found by memberId, trying by room:", room, "kostId:", kostId);
+                    try {
+                        tagihan = await getTagihanByRoom(room, kostId);
+                        console.log("Query by room result:", tagihan.length, "items found");
+                    } catch (err) {
+                        console.error("Error querying by room:", err);
+                    }
+                }
+                
+                console.log("Final tagihan list:", tagihan);
+                console.log("===== FETCHING TAGIHAN END =====");
+                setTagihanList(tagihan);
+            } catch (error) {
+                console.error("Error fetching tagihan:", error);
+                setTagihanList([]);
+            } finally {
+                setLoadingTagihan(false);
+            }
+        };
+
+        // Only fetch if we have either memberId or room info
+        if (memberId || kamar || memberData?.room) {
+            console.log("Conditions met, starting fetch. memberId:", memberId, "kamar:", kamar, "memberData?.room:", memberData?.room);
+            fetchTagihan();
+        } else {
+            console.log("No memberId or room info, skipping tagihan fetch");
+            setLoadingTagihan(false);
+        }
+    }, [memberId, kamar, memberData?.room, kostId]);
+
     // Calculate tagihan stats
-    const unpaidTagihan = tagihanList.filter((t: any) => t.status === "unpaid" || t.status === "overdue");
+    const unpaidTagihan = tagihanList.filter((t: any) => 
+        t.status !== "Lunas" && t.status !== "Paid" && t.status !== "paid" && t.status !== "lunas"
+    );
     const totalUnpaid = unpaidTagihan.reduce((sum: number, t: any) => sum + t.amount, 0);
 
     if (loading && loadingTagihan) {
@@ -130,7 +204,7 @@ export default function MemberDashboard() {
                         <View style={styles.locationBadge}>
                             <MapPin size={14} color="#000" style={{ marginRight: 4 }} />
                             <Text style={styles.locationText}>
-                                Kamar {memberData?.kamar || "-"}
+                                Kamar {memberData?.room || user?.kamar || "-"}
                             </Text>
                         </View>
                     </View>
