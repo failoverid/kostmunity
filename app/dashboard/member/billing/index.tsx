@@ -1,10 +1,25 @@
 import FloatingNavbar from "@/components/FloatingNavbar";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
-import { ActivityIndicator, Image, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useState, useEffect } from "react";
+import { 
+    ActivityIndicator, 
+    Alert,
+    Image, 
+    Modal,
+    Platform, 
+    SafeAreaView, 
+    ScrollView, 
+    StatusBar, 
+    StyleSheet, 
+    Text, 
+    TouchableOpacity, 
+    View 
+} from "react-native";
 import { useAuth } from "../../../../contexts/AuthContext";
-import { useTagihanList } from "../../../../hooks/useTagihan";
 import { formatCurrency } from "../../../../lib/formatting";
+import { getTagihanByMemberId, getTagihanByRoom, updateTagihan } from "../../../../services/tagihanService";
+import { Tagihan } from "../../../../models/Tagihan";
+import { X } from "lucide-react-native";
 
 const COLORS = {
     background: "#181A20",
@@ -20,18 +35,91 @@ export default function BillingPage() {
     const router = useRouter();
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<"bills" | "paid">("bills");
+    const [tagihan, setTagihan] = useState<Tagihan[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedBill, setSelectedBill] = useState<Tagihan | null>(null);
+    const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+    const [paying, setPaying] = useState(false);
 
-    const { tagihan, loading, error } = useTagihanList('member', user?.memberId || "");
+    const memberId = user?.memberId || "";
+    const kamar = user?.kamar || "";
+    const kostId = user?.kostId || "";
+
+    // Fetch tagihan
+    const fetchTagihan = async () => {
+        setLoading(true);
+        try {
+            let result: Tagihan[] = [];
+            
+            // Try by memberId first
+            if (memberId) {
+                result = await getTagihanByMemberId(memberId);
+            }
+            
+            // Fallback to room
+            if (result.length === 0 && kamar) {
+                result = await getTagihanByRoom(kamar, kostId);
+            }
+            
+            setTagihan(result);
+        } catch (error) {
+            console.error("Error fetching tagihan:", error);
+            setTagihan([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (memberId || kamar) {
+            fetchTagihan();
+        }
+    }, [memberId, kamar, kostId]);
+
+    const handlePaymentClick = (bill: Tagihan) => {
+        setSelectedBill(bill);
+        setPaymentModalVisible(true);
+    };
+
+    const handleConfirmPayment = async () => {
+        if (!selectedBill) return;
+
+        setPaying(true);
+        try {
+            await updateTagihan(selectedBill.id, {
+                status: "Lunas",
+            });
+
+            if (Platform.OS === 'web') {
+                alert("Pembayaran berhasil!");
+            } else {
+                Alert.alert("Sukses", "Pembayaran berhasil!");
+            }
+
+            setPaymentModalVisible(false);
+            setSelectedBill(null);
+            await fetchTagihan(); // Refresh data
+        } catch (error) {
+            console.error("Error processing payment:", error);
+            if (Platform.OS === 'web') {
+                alert("Gagal memproses pembayaran. Silakan coba lagi.");
+            } else {
+                Alert.alert("Gagal", "Gagal memproses pembayaran. Silakan coba lagi.");
+            }
+        } finally {
+            setPaying(false);
+        }
+    };
 
     const filteredBills = tagihan.filter((item: any) => {
         const isPaid = item.status === 'Lunas' || item.status === 'Paid';
         return activeTab === "bills" ? !isPaid : isPaid;
     });
 
-    const renderBillCard = (item: any) => (
+    const renderBillCard = (item: Tagihan) => (
         <View key={item.id} style={styles.billCard}>
             <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{item.notes || "Tagihan Sewa Kost"}</Text>
+                <Text style={styles.cardTitle}>Tagihan Sewa Kost</Text>
                 <Text style={styles.cardSubtitle}>Jatuh Tempo : {item.dueDate}</Text>
             </View>
             <View style={styles.divider} />
@@ -43,7 +131,10 @@ export default function BillingPage() {
                             <Text style={styles.statusText}>Terlambat</Text>
                         </View>
                     )}
-                    <TouchableOpacity style={styles.payButton} onPress={() => alert("Fitur pembayaran akan segera hadir!")}>
+                    <TouchableOpacity 
+                        style={styles.payButton} 
+                        onPress={() => handlePaymentClick(item)}
+                    >
                         <Text style={styles.payButtonText}>Bayar</Text>
                     </TouchableOpacity>
                 </View>
@@ -51,10 +142,10 @@ export default function BillingPage() {
         </View>
     );
 
-    const renderHistoryCard = (item: any) => (
+    const renderHistoryCard = (item: Tagihan) => (
         <View key={item.id} style={styles.historyCard}>
             <View style={styles.cardHeader}>
-                <Text style={[styles.cardTitle, { color: '#888' }]}>{item.notes || "Tagihan Sewa Kost"}</Text>
+                <Text style={[styles.cardTitle, { color: '#888' }]}>Tagihan Sewa Kost</Text>
                 <Text style={styles.cardSubtitle}>Jatuh Tempo : {item.dueDate}</Text>
             </View>
             <View style={[styles.divider, { backgroundColor: '#333' }]} />
@@ -100,6 +191,72 @@ export default function BillingPage() {
                 )}
                 <View style={{ height: 100 }} />
             </ScrollView>
+
+            {/* Payment Confirmation Modal */}
+            <Modal
+                visible={paymentModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => !paying && setPaymentModalVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Konfirmasi Pembayaran</Text>
+                            <TouchableOpacity 
+                                onPress={() => !paying && setPaymentModalVisible(false)}
+                                disabled={paying}
+                            >
+                                <X size={24} color="#fff" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {selectedBill && (
+                            <View style={styles.modalBody}>
+                                <View style={styles.detailRow}>
+                                    <Text style={styles.detailLabel}>Kamar</Text>
+                                    <Text style={styles.detailValue}>{selectedBill.room}</Text>
+                                </View>
+                                <View style={styles.detailRow}>
+                                    <Text style={styles.detailLabel}>Jatuh Tempo</Text>
+                                    <Text style={styles.detailValue}>{selectedBill.dueDate}</Text>
+                                </View>
+                                <View style={[styles.detailRow, { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#333' }]}>
+                                    <Text style={styles.detailLabel}>Total Tagihan</Text>
+                                    <Text style={[styles.detailValue, { fontSize: 20, fontWeight: 'bold', color: COLORS.lime }]}>
+                                        {formatCurrency(selectedBill.amount)}
+                                    </Text>
+                                </View>
+
+                                <Text style={styles.warningText}>
+                                    Pastikan Anda telah melakukan transfer ke rekening pengelola kost sebelum konfirmasi pembayaran ini.
+                                </Text>
+                            </View>
+                        )}
+
+                        <View style={styles.modalFooter}>
+                            <TouchableOpacity 
+                                style={styles.cancelButton} 
+                                onPress={() => setPaymentModalVisible(false)}
+                                disabled={paying}
+                            >
+                                <Text style={styles.cancelButtonText}>Batal</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={[styles.confirmButton, paying && { opacity: 0.5 }]} 
+                                onPress={handleConfirmPayment}
+                                disabled={paying}
+                            >
+                                {paying ? (
+                                    <ActivityIndicator color="#000" size="small" />
+                                ) : (
+                                    <Text style={styles.confirmButtonText}>Konfirmasi Bayar</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             <FloatingNavbar />
         </SafeAreaView>
@@ -263,5 +420,99 @@ const styles = StyleSheet.create({
         color: "#000",
         fontWeight: "bold",
         fontSize: 12,
+    },
+
+    // Modal styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+
+    modalContent: {
+        backgroundColor: COLORS.cardDark,
+        borderRadius: 20,
+        width: '100%',
+        maxWidth: 400,
+        padding: 24,
+    },
+
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: COLORS.textWhite,
+    },
+
+    modalBody: {
+        marginBottom: 24,
+    },
+
+    detailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+    },
+
+    detailLabel: {
+        fontSize: 14,
+        color: COLORS.textGray,
+    },
+
+    detailValue: {
+        fontSize: 14,
+        color: COLORS.textWhite,
+        fontWeight: '600',
+    },
+
+    warningText: {
+        fontSize: 12,
+        color: '#ff9800',
+        marginTop: 16,
+        padding: 12,
+        backgroundColor: 'rgba(255, 152, 0, 0.1)',
+        borderRadius: 8,
+        lineHeight: 18,
+    },
+
+    modalFooter: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+
+    cancelButton: {
+        flex: 1,
+        backgroundColor: '#333',
+        paddingVertical: 12,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+
+    cancelButtonText: {
+        color: COLORS.textWhite,
+        fontWeight: '600',
+        fontSize: 14,
+    },
+
+    confirmButton: {
+        flex: 1,
+        backgroundColor: COLORS.lime,
+        paddingVertical: 12,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+
+    confirmButtonText: {
+        color: '#000',
+        fontWeight: 'bold',
+        fontSize: 14,
     },
 });
