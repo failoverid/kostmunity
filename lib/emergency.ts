@@ -1,13 +1,13 @@
 // lib/emergency.ts
 import {
-  addDoc,
-  collection,
-  doc,
-  getDocs,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where
+    addDoc,
+    collection,
+    doc,
+    getDocs,
+    query,
+    serverTimestamp,
+    updateDoc,
+    where
 } from "firebase/firestore";
 import { db } from "./firebase-clients";
 
@@ -25,20 +25,36 @@ export async function createEmergency({
   message?: string;
   location?: { lat: number; lng: number } | null;
 }) {
+  console.log("=== createEmergency CALLED ===");
+  console.log("userId:", userId);
+  console.log("kostId:", kostId);
+  console.log("message:", message);
+  
   try {
-    const docRef = await addDoc(collection(db, "emergencies"), {
+    const emergencyData = {
       userId,
       kostId,
       message,
       status: "active",
       createdAt: serverTimestamp(),
       location: location || null
-    });
+    };
+    
+    console.log("Attempting to add document to emergencies collection...");
+    console.log("Data:", emergencyData);
+    
+    const docRef = await addDoc(collection(db, "emergencies"), emergencyData);
 
+    console.log("Emergency document created successfully!");
+    console.log("Document ID:", docRef.id);
+    
     return { success: true, id: docRef.id };
-  } catch (error) {
-    console.error("Error creating emergency:", error);
-    return { success: false, error };
+  } catch (error: any) {
+    console.error("!!! ERROR creating emergency !!!");
+    console.error("Error code:", error.code);
+    console.error("Error message:", error.message);
+    console.error("Full error:", error);
+    return { success: false, error: error.message };
   }
 }
 
