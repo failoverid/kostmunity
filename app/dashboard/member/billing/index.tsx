@@ -1,25 +1,25 @@
 import FloatingNavbar from "@/components/FloatingNavbar";
 import { useRouter } from "expo-router";
-import React, { useState, useEffect } from "react";
-import { 
-    ActivityIndicator, 
+import { X } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
+import {
+    ActivityIndicator,
     Alert,
-    Image, 
+    Image,
     Modal,
-    Platform, 
-    SafeAreaView, 
-    ScrollView, 
-    StatusBar, 
-    StyleSheet, 
-    Text, 
-    TouchableOpacity, 
-    View 
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { useAuth } from "../../../../contexts/AuthContext";
 import { formatCurrency } from "../../../../lib/formatting";
-import { getTagihanByMemberId, getTagihanByRoom, updateTagihan } from "../../../../services/tagihanService";
 import { Tagihan } from "../../../../models/Tagihan";
-import { X } from "lucide-react-native";
+import { getTagihanByMemberId, getTagihanByRoom, updateTagihan } from "../../../../services/tagihanService";
 
 const COLORS = {
     background: "#181A20",
