@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "kostmunity",
+    "name": "Kostmunity",
     "slug": "kostmunity",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,9 +9,12 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kostmunity.app"
     },
     "android": {
+      "package": "com.kostmunity.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -43,6 +46,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e7949949-4d76-45b1-a1b4-c0b4f5d53407"
+      }
     }
   }
 }
