@@ -124,6 +124,16 @@ export default function HomePage() {
             >
               <Text style={styles.ctaSecondaryText}>Login ke Dashboard</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.ctaDownload}
+              onPress={() => {
+                if (Platform.OS === 'web') {
+                  window.open('https://drive.google.com/uc?export=download&id=1kC6VsG1rN5ZnweOmB5TOaHWK8AzcWxIJ', '_blank');
+                }
+              }}
+            >
+              <Text style={styles.ctaDownloadText}>📱 Download APK Android</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.stats}>
@@ -426,6 +436,17 @@ const styles = StyleSheet.create({
   },
   ctaSecondaryText: {
     color: "#1f2937",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  ctaDownload: {
+    backgroundColor: "#1f2937",
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 12,
+  },
+  ctaDownloadText: {
+    color: "#ffffff",
     fontSize: 18,
     fontWeight: "bold",
   },
